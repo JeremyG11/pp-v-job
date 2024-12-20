@@ -31,6 +31,7 @@ export async function ensureValidAccessToken(accountId: string) {
 
       await db.twitterAccount.update({
         where: { id: account.id },
+
         data: {
           accessToken,
           refreshToken: refreshToken ?? null,
