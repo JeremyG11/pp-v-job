@@ -5,7 +5,7 @@ import { fetchTweetsForAccounts } from "./jobs/fetch-tweet";
 // Schedule the job to run periodically
 export const scheduleJobs = () => {
   // Fetch mentions every 15 minutes
-  cron.schedule("*/15 * * * *", async () => {
+  cron.schedule("0 0 * * *", async () => {
     console.log("Fetching mentions...");
     await fetchMentions();
   });
