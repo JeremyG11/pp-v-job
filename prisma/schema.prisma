@@ -1,0 +1,270 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+enum TweetType {
+  FETCHED
+  GENERATED
+}
+enum TweetAccountStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+model User {
+  id                          String    @id @default(uuid())
+  name                        String?
+  email                       String    @unique
+  username                    String    @unique
+  emailVerified               DateTime?
+  image                       String?
+  password                    String?
+  role                        UserRole  @default(USER)
+  accounts                    Account[]
+  isTwoFactorEnabled          Boolean   @default(false)
+  twoFactorConfirmation       TwoFactorConfirmation?
+
+  twitterAccounts             TwitterAccount[]
+  lastLogin                   DateTime?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+  deletedAt                   DateTime?
+}
+
+
+model Account {
+  id                 String  @id @default(uuid())
+  userId             String  
+  type               String
+  provider           String
+  name               String?
+  avatar             String?
+
+  providerAccountId  String
+  refresh_token      String?  @db.Text
+  access_token       String?  @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?  @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+ 
+model PainPoint {
+  id                      String    @id @default(uuid())
+  name                    String    
+  description             String    @db.Text
+  imageUrl                String?
+  painPoints              String[]   
+  keywords                String[]   
+
+  twitterAccountId        String    @unique
+  twitterAccount          TwitterAccount @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
+  
+  siteLandingPageContent  Json?
+  title                   String?
+  metaDescription         String?
+  extractedKeywords       String?
+  headings                String?
+
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+model TwitterAccount {
+  id                  String    @id @default(uuid())
+  userId              String
+  username            String?      
+  tweetLimit          Int?        // API rate limits
+  twitterUserId       String
+
+  isActive            Boolean    @default(false)
+  status              TweetAccountStatus @default(ACTIVE)
+  accessToken         String?    @db.Text
+  refreshToken        String?    @db.Text
+  expiresIn           Int?
+  tokenType           String?
+  profileImageUrl     String?   
+  providerAccountId   String?
+  accountName         String?
+
+  analyticsFrequency  String?      // E.g., "daily", "hourly" for fetching engagement analytics
+  metrics             Json?        // Twitter-specific metrics
+  followerCount       Int?
+
+  tweets              Tweet[]
+  oauth2Tokens        OAuth2Token[]
+
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  painPoint           PainPoint?
+  mentions            Mention[]
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([username])
+  @@unique([userId, providerAccountId])
+}
+
+model OAuth2Token {
+  id               String  @id @default(uuid())
+  userId           String?  @unique
+  twitterAccountId String?  @unique
+  provider         String  
+  codeVerifier     String? @db.Text
+  state            String? @db.Text
+  accessToken      String? @db.Text
+  refreshToken     String? @db.Text
+  expiresAt        Int?
+  tokenType        String? // E.g., "Bearer"
+
+  twitterAccount   TwitterAccount? @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now())
+
+  @@unique([userId, twitterAccountId, provider]) 
+  @@unique([state])
+
+}
+
+
+model VerificationToken {
+  id String         @id @default(uuid())
+  email String
+  token String      @unique
+  expires DateTime
+
+  @@unique([email, token])
+}
+
+model PasswordResetToken {
+  id String       @id @default(uuid())
+  email String
+  token String    @unique
+  expires DateTime
+
+  @@unique([email, token])
+}
+
+model TwoFactorToken {
+  id String @id @default(uuid())
+  email String
+  token String @unique
+  expires DateTime
+
+  @@unique([email, token])
+}
+
+model TwoFactorConfirmation {
+  id String @id @default(uuid())
+
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+}
+ 
+model Tweet {
+  id                    String    @id @default(uuid())
+  tweetId               String    @unique
+  text                  String
+  authorId              String?
+  authorName            String?
+  authorUsername        String?
+  authorProfileImageUrl String?
+  isRetweet             Boolean  @default(false)
+  referencedTweetId     String?
+
+  likeCount             Int
+  retweetCount          Int
+  replyCount            Int
+  quoteCount            Int
+  impressionCount       Int
+
+  timestamp            String
+  media                Media[]
+
+  keyword              String?
+
+  tweetType                     TweetType @default(FETCHED)
+  generatedTweetResponses       GeneratedTweetResponse[]
+
+  twitterAccountId           String
+  twitterAccount             TwitterAccount   @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
+
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([tweetId])
+}
+
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  GIF
+  OTHER
+}
+
+model Media {
+  id               String     @id @default(uuid())
+  mediaKey         String     @unique
+  type             MediaType
+  url              String?
+  previewImageUrl  String?
+  height           Int?
+  width            Int?
+  tweetId          String
+  tweet            Tweet      @relation(fields: [tweetId], references: [id], onDelete: Cascade)
+
+  duration         Int?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+}
+
+model GeneratedTweetResponse {
+  id              String      @id @default(uuid())
+  tweetId         String
+  response        String
+  agreeableness   String
+
+  createdAt       DateTime @default(now())
+
+  tweet           Tweet    @relation(fields: [tweetId], references: [id] , onDelete: Cascade)
+
+  @@index([tweetId])
+
+}
+
+model Mention {
+  id               String   @id @default(cuid())
+  mentionId        String   @unique
+  mentionText      String
+  tweetId          String   @unique
+  twitterAccountId String
+
+  authorId              String?
+  authorName            String?
+  authorUsername        String?
+  authorProfileImageUrl String?
+
+  twitterAccount   TwitterAccount @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
+  metadata         Json?
+  seen             Boolean  @default(false)
+  createdAt        DateTime @default(now())
+}

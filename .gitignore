@@ -1,0 +1,31 @@
+node_modules
+# Keep environment variables out of version control
+.env
+
+.env.local
+.env.development.local
+.env.test.local
+
+.env.production.local
+# Don't include the build directory in version control
+build
+# Don't include the coverage directory in version control
+coverage
+# Don't include the .vscode directory in version control
+.vscode
+# Don't include the .idea directory in version control
+.idea
+# Don't include the .DS_Store directory in version control
+.DS_Store
+# Don't include the .cache directory in version control
+.cache
+# Don't include the .eslintcache directory in version control
+.eslintcache
+# Don't include the .parcel-cache directory in version control
+.parcel-cache
+# Don't include the .yarn directory in version control
+.yarn
+# Don't include the .yarnrc file in version control
+.yarnrc
+# Don't include the yarn-error.log file in version control
+yarn-error.log
