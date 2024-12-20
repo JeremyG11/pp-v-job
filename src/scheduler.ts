@@ -11,7 +11,7 @@ export const scheduleJobs = () => {
   });
 
   // Fetch tweets for accounts daily at midnight
-  cron.schedule("0 0 * * *", async () => {
+  cron.schedule("* * * * *", async () => {
     console.log("Running scheduled job: Fetch tweets for accounts");
     await fetchTweetsForAccounts();
     console.log("Completed scheduled job: Fetch tweets for accounts");

@@ -189,6 +189,7 @@ model Tweet {
   authorProfileImageUrl String?
   isRetweet             Boolean  @default(false)
   referencedTweetId     String?
+  hasEngageWith         Boolean  @default(false)
 
   likeCount             Int
   retweetCount          Int
@@ -238,18 +239,36 @@ model Media {
 }
 
 model GeneratedTweetResponse {
-  id              String      @id @default(uuid())
-  tweetId         String
-  response        String
-  agreeableness   String
+  id             String    @id @default(uuid())
+  tweetId        String
+  response       String
+  engagementType EngagementType?
 
-  createdAt       DateTime @default(now())
-
-  tweet           Tweet    @relation(fields: [tweetId], references: [id] , onDelete: Cascade)
+  createdAt      DateTime  @default(now())
+  tweet          Tweet     @relation(fields: [tweetId], references: [id], onDelete: Cascade)
 
   @@index([tweetId])
-
 }
+
+enum Agreeableness {
+  STRONGLY_AGREE
+  AGREE
+  NEUTRAL
+  DISAGREE
+  STRONGLY_DISAGREE
+}
+
+enum EngagementType {
+  AUTHORITY
+  EMPATHY
+  SOLUTION_ORIENTED
+  HUMOR
+  QUESTION
+  CONTRARIAN
+  TREND_BASED
+  WHAT_IF
+}
+
 
 model Mention {
   id               String   @id @default(cuid())
