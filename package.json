@@ -7,7 +7,8 @@
     "dev": "nodemon --watch src --ext ts --exec ts-node -r module-alias/register src/index.ts",
     "start": "node -r module-alias/register dist/index.js",
     "build": "tsc",
-    "prisma": "npx prisma"
+    "prisma": "npx prisma",
+    "postinstall": "prisma generate"
   },
   "keywords": [],
   "author": "",
