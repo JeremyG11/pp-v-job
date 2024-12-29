@@ -21,6 +21,7 @@
     "express": "^4.21.2",
     "module-alias": "^2.2.2",
     "node-cron": "^3.0.3",
+    "openai": "^4.77.0",
     "twitter-api-v2": "^1.18.2"
   },
   "devDependencies": {
