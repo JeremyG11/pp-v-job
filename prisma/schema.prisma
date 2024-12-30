@@ -69,16 +69,15 @@ model PainPoint {
   name                    String    
   description             String    @db.Text
   imageUrl                String?
-  painPoints              String[]   
-  keywords                String[]   
+  keywords                String[]
+  siteKeywords            String? 
 
   twitterAccountId        String    @unique
   twitterAccount          TwitterAccount @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
   
-  siteLandingPageContent  Json?
+  siteSummary             String?
   title                   String?
   metaDescription         String?
-  extractedKeywords       String?
   headings                String?
 
   createdAt               DateTime @default(now())
