@@ -84,7 +84,7 @@ export const fetchMentions = async () => {
 };
 
 // Set up a CRON job to poll Twitter every minute
-cron.schedule("* * * * *", () => {
+cron.schedule("0 0 * * *", () => {
   console.log("Checking for mentions...");
   fetchMentions();
 });
