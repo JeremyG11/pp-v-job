@@ -1,11 +1,8 @@
-import "module-alias/register";
 import cors from "cors";
 import dotenv from "dotenv";
 import express, { Application } from "express";
 import { scheduleJobs } from "./scheduler";
 import webhookRouter from "./routes/webhook";
-import { eventEmitter } from "./events";
-import { fetchTweetsForAccounts } from "./jobs/fetch-tweet";
 
 const port = process.env.PORT || 3000;
 const app: Application = express();

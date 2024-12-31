@@ -3,10 +3,9 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-  "type": "module",
   "scripts": {
     "dev": "nodemon --watch src --ext ts --exec tsx src/index.ts",
-    "start": "node -r module-alias/register build/index.js",
+    "start": "node build/index.js",
     "build": "tsup src/index.ts --out-dir build --format esm,cjs --target node20",
     "prisma": "npx prisma",
     "postinstall": "prisma generate"
@@ -20,7 +19,6 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "module-alias": "^2.2.2",
     "node-cron": "^3.0.3",
     "openai": "^4.77.0",
     "tsup": "^8.3.5",
@@ -35,8 +33,5 @@
     "ts-node": "^10.9.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
-  },
-  "_moduleAliases": {
-    "@": "./src"
   }
 }
