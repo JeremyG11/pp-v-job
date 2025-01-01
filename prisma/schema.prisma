@@ -243,6 +243,7 @@ model GeneratedTweetResponse {
   response       String
   engagementType EngagementType?
   responseType   String?
+  isPrepared     Boolean   @default(false)
   createdAt      DateTime  @default(now())
   tweet          Tweet     @relation(fields: [tweetId], references: [id], onDelete: Cascade)
 
@@ -262,11 +263,11 @@ enum EngagementType {
   AGREEABLENESS_DISAGREE
   AUTHORITY
   EMPATHY
-  SOLUTION_ORIENTED
+  SOLUTION
   HUMOR
   QUESTION
   CONTRARIAN
-  TREND_BASED
+  TREND
   WHAT_IF
 }
 

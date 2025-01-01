@@ -55,10 +55,10 @@ async function fetchAppPainpoint(accountId: string) {
   const appPainpoint = await db.painPoint.findFirst({
     where: { twitterAccountId: accountId },
   });
-  if (!appPainpoint || appPainpoint.description === "N/A")
+  if (!appPainpoint || appPainpoint.siteSummary === "N/A")
     throw new Error("App's pain point is not properly configured.");
 
-  return appPainpoint.description ?? "";
+  return appPainpoint.siteSummary ?? "";
 }
 
 async function generatePromptResponse(prompt: string) {
@@ -77,9 +77,29 @@ async function generatePromptResponse(prompt: string) {
 
 function parseGeneratedResponse(generatedResponse: string) {
   const match = generatedResponse.match(/^\d+\. \[(.+?)\]: (.+)$/);
-  return match
-    ? { responseType: match[1].trim(), responseText: match[2].trim() }
-    : null;
+  if (match) {
+    return { responseType: match[1].trim(), responseText: match[2].trim() };
+  }
+
+  // Try another format if the first one fails
+  const alternativeMatch = generatedResponse.match(/^1\. \[(.+?)\]: (.+)$/);
+  if (alternativeMatch) {
+    return {
+      responseType: alternativeMatch[1].trim(),
+      responseText: alternativeMatch[2].trim(),
+    };
+  }
+
+  // Try another format if the second one fails
+  const anotherAlternativeMatch = generatedResponse.match(/^1\. (.+?): (.+)$/);
+  if (anotherAlternativeMatch) {
+    return {
+      responseType: anotherAlternativeMatch[1].trim(),
+      responseText: anotherAlternativeMatch[2].trim(),
+    };
+  }
+
+  return null;
 }
 
 async function saveGeneratedResponse(
@@ -87,17 +107,22 @@ async function saveGeneratedResponse(
   response: { responseType: string; responseText: string },
   engagementType: string
 ) {
-  await db.generatedTweetResponse.create({
-    data: {
-      tweetId,
-      response: response.responseText,
-      engagementType:
-        EngagementType[
-          engagementType.toUpperCase() as keyof typeof EngagementType
-        ],
-      responseType: response.responseType,
-    },
-  });
+  try {
+    await db.generatedTweetResponse.create({
+      data: {
+        tweetId,
+        response: response.responseText,
+        engagementType:
+          EngagementType[
+            engagementType.toUpperCase() as keyof typeof EngagementType
+          ],
+        responseType: response.responseType,
+        isPrepared: true,
+      },
+    });
+  } catch (error) {
+    console.log(`Error saving response for tweet ${tweetId}:`, error);
+  }
 }
 
 export async function generateResponseForTweet(
@@ -106,26 +131,37 @@ export async function generateResponseForTweet(
   engagementType: string,
   accountId: string
 ) {
-  const description = await fetchAppPainpoint(accountId);
-  const engagementTone = getEngagementTone(engagementType);
+  try {
+    const description = await fetchAppPainpoint(accountId);
+    const engagementTone = getEngagementTone(engagementType);
 
-  const prompt = `
-    Create a response for the following tweet:
-    Tweet: "${tweetText}"
-    Engagement Type: ${engagementType}
-    Tone Guidelines: ${engagementTone}
-    Business Context: "${description}"
-    Format the response as:
-    1. [Response Type]: [Response Text]
-  `;
+    const prompt = `
+      Create a response for the following tweet:
+      Tweet: "${tweetText}"
+      Engagement Type: ${engagementType}
+      Tone Guidelines: ${engagementTone}
+      Business Context: "${description}"
+      Format the response as:
+      1. [Response Type]: [Response Text]
+    `;
 
-  const generatedResponse = await generatePromptResponse(prompt);
-  const response = parseGeneratedResponse(generatedResponse);
-  if (response) {
-    await saveGeneratedResponse(tweetId, response, engagementType);
+    const generatedResponse = await generatePromptResponse(prompt);
+    console.log(
+      `Generated response for tweet ${tweetId}: ${generatedResponse}`
+    );
+
+    const response = parseGeneratedResponse(generatedResponse);
+    if (response) {
+      await saveGeneratedResponse(tweetId, response, engagementType);
+    } else {
+      console.log(`No valid response generated for tweet ${tweetId}`);
+    }
+
+    return response;
+  } catch (error) {
+    console.log(`Error generating response for tweet ${tweetId}:`, error);
+    throw error;
   }
-
-  return response;
 }
 
 async function fetchLatestTweets() {
@@ -154,11 +190,11 @@ export async function generateResponsesForTopTweets() {
     const engagementTypes = [
       EngagementType.AUTHORITY,
       EngagementType.EMPATHY,
-      EngagementType.SOLUTION_ORIENTED,
+      EngagementType.SOLUTION,
       EngagementType.HUMOR,
       EngagementType.QUESTION,
       EngagementType.CONTRARIAN,
-      EngagementType.TREND_BASED,
+      EngagementType.TREND,
       EngagementType.WHAT_IF,
     ];
 
@@ -186,13 +222,13 @@ export async function generateResponsesForTopTweets() {
           `Successfully generated response for tweet ${tweetId} with engagement type ${engagementType}.`
         );
       } catch (err) {
-        console.error(
+        console.log(
           `Error processing tweet ${tweetId} with engagement type ${engagementType}:`,
           err
         );
       }
     }
   } catch (err) {
-    console.error("Error in cron job:", err);
+    console.log("Error in cron job:", err);
   }
 }
