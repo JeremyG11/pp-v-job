@@ -63,7 +63,7 @@ async function fetchAppPainpoint(accountId: string) {
 
 async function generatePromptResponse(prompt: string) {
   const response = await openai.chat.completions.create({
-    model: "gpt-4",
+    model: "gpt-4o-mini",
     messages: [
       { role: "system", content: "You generate engaging tweet responses." },
       { role: "user", content: prompt },
