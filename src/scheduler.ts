@@ -11,39 +11,48 @@ import { generateResponsesForTopTweets } from "./jobs/generate-tweet-content";
  */
 export const scheduleJobs = () => {
   /**
-   * Fetch mentions daily at midnight.
+   * Fetch mentions every 5 minutes.
    * This job fetches mentions for all active Twitter accounts.
    * @see {@link fetchMentions}
    */
-  cron.schedule("0 0 * * *", async () => {
+  cron.schedule("*/5 * * * *", async () => {
     console.log("Fetching mentions...");
-    await fetchMentions();
+    try {
+      await fetchMentions();
+      console.log("Completed fetching mentions.");
+    } catch (error) {
+      console.error("Error fetching mentions:", error);
+    }
   });
 
   /*
-   * Fetch tweets for accounts daily at 12:05 AM.
+   * Fetch tweets for accounts every 5 minutes.
    * This job fetches tweets for all active Twitter accounts.
    * @see {@link fetchTweetsForAccounts}
    *
    * Generate tweet responses for top tweets after fetching tweets.
    * @see {@link generateResponsesForTopTweets}
    */
-  cron.schedule("5 0 * * *", async () => {
+  cron.schedule("*/5 * * * *", async () => {
     console.log("Running scheduled job: Fetch tweets for accounts");
-    await fetchTweetsForAccounts();
-    console.log("Completed scheduled job: Fetch tweets for accounts");
+    try {
+      await fetchTweetsForAccounts();
+      console.log("Completed scheduled job: Fetch tweets for accounts");
 
-    console.log("Generating new Engagement Ready Tweets...");
-    await generateResponsesForTopTweets();
-    console.log("Completed generating new Engagement Ready Tweets.");
+      console.log("Generating new Engagement Ready Tweets...");
+      await generateResponsesForTopTweets();
+      console.log("Completed generating new Engagement Ready Tweets.");
+    } catch (error) {
+      console.error("Error in scheduled job: Fetch tweets for accounts", error);
+    }
   });
 
   /*
-   * Refresh access tokens every 6 hours.
+   * Refresh access tokens every 5 minutes.
    * This job refreshes the access token for all active Twitter accounts.
    * @see {@link ensureValidAccessToken}
    */
-  cron.schedule("0 */6 * * *", async () => {
+  cron.schedule("*/5 * * * *", async () => {
     console.log("Starting the access token refresh job...");
 
     try {
@@ -74,7 +83,7 @@ export const scheduleJobs = () => {
   });
 
   console.log(
-    "Jobs scheduled: Fetch mentions at midnight, Fetch tweets at 12:05 AM, Refresh access tokens every 6 hours, Generate new Engagement Ready Tweets after fetching tweets."
+    "Jobs scheduled: Fetch mentions every 5 minutes, Fetch tweets every 5 minutes, Refresh access tokens every 5 minutes, Generate new Engagement Ready Tweets after fetching tweets."
   );
 };
 
