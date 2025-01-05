@@ -65,9 +65,7 @@ export const scheduleJobs = () => {
       for (const account of twitterAccounts) {
         try {
           const accessToken = await ensureValidAccessToken(account.id);
-          console.log(
-            `Access token refreshed for account ${account.id}: ${accessToken}`
-          );
+          console.log(`Access token refreshed for account ${account.id}`);
         } catch (error) {
           console.error(
             `Failed to refresh access token for account ${account.id}:`,
