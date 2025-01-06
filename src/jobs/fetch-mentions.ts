@@ -82,9 +82,3 @@ export const fetchMentions = async () => {
     console.error("Error fetching mentions:", error);
   }
 };
-
-// Set up a CRON job to poll Twitter every minute
-cron.schedule("0 0 * * *", () => {
-  console.log("Checking for mentions...");
-  fetchMentions();
-});

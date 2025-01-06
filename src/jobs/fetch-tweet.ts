@@ -118,14 +118,14 @@ export const fetchTweetsForAccount = async (accountId: string) => {
 
     console.log(`Fetched tweets for PainPoint: ${painPoint.name}`);
   } catch (error) {
-    console.error("Error in fetchTweetsForAccount:", error);
+    console.log("Error in fetchTweetsForAccount:", error);
   }
 };
 
-export const fetchTweetsForAccounts = async () => {
+export const fetchTweetsForAccounts = async (userId: string) => {
   try {
     const twitterAccounts = await db.twitterAccount.findMany({
-      where: { status: TweetAccountStatus.ACTIVE },
+      where: { userId, status: TweetAccountStatus.ACTIVE },
       include: { painPoint: true },
     });
 
@@ -138,6 +138,6 @@ export const fetchTweetsForAccounts = async () => {
       await fetchTweetsForAccount(account.id);
     }
   } catch (error) {
-    console.error("Error in fetchTweetsForAccounts:", error);
+    console.log("Error in fetchTweetsForAccounts:", error);
   }
 };
