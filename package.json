@@ -7,7 +7,6 @@
     "dev": "nodemon --watch src --ext ts --exec tsx src/index.ts",
     "start": "node build/index.js",
     "build": "tsup src/index.ts --out-dir build --format esm,cjs --target node20",
-    "prisma": "npx prisma",
     "postinstall": "prisma generate"
   },
   "keywords": [],
