@@ -34,7 +34,8 @@ model User {
   isTwoFactorEnabled          Boolean   @default(false)
   twoFactorConfirmation       TwoFactorConfirmation?
 
-  timezone  String            @default("UTC")  
+  timezone                    String            @default("UTC")  
+  hasConfiguredTimezone       Boolean           @default(false)
   twitterAccounts             TwitterAccount[]
   lastLogin                   DateTime?
   createdAt                   DateTime  @default(now())
