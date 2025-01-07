@@ -23,12 +23,12 @@ export const scheduleJobs = async () => {
     );
 
     /**
-     * Fetch mentions daily at midnight.
+     * Fetch mentions every 5 minutes.
      * This job fetches mentions for all active Twitter accounts.
      * @see {@link fetchMentions}
      */
     cron.schedule(
-      "0 0 * * *",
+      "*/5 * * * *",
       async () => {
         console.log(`Fetching mentions for user ${user.id}...`);
         try {
@@ -44,7 +44,7 @@ export const scheduleJobs = async () => {
     );
 
     /*
-     * Fetch tweets for accounts daily at 12:05 AM.
+     * Fetch tweets for accounts every 5 minutes.
      * This job fetches tweets for all active Twitter accounts.
      * @see {@link fetchTweetsForAccounts}
      *
@@ -52,7 +52,7 @@ export const scheduleJobs = async () => {
      * @see {@link generateResponsesForTopTweets}
      */
     cron.schedule(
-      "5 0 * * *",
+      "*/5 * * * *",
       async () => {
         console.log(
           `Running scheduled job: Fetch tweets for accounts for user ${user.id}`
@@ -83,12 +83,12 @@ export const scheduleJobs = async () => {
     );
 
     /*
-     * Refresh access tokens every 6 hours.
+     * Refresh access tokens every 5 minutes.
      * This job refreshes the access token for all active Twitter accounts.
      * @see {@link ensureValidAccessToken}
      */
     cron.schedule(
-      "0 */6 * * *",
+      "*/5 * * * *",
       async () => {
         console.log(
           `Starting the access token refresh job for user ${user.id}...`
