@@ -89,6 +89,7 @@ model PainPoint {
 model TwitterAccount {
   id                  String    @id @default(uuid())
   userId              String
+  oauth2TokenId       String    @unique
   username            String?      
   tweetLimit          Int?        // API rate limits
   twitterUserId       String
@@ -108,11 +109,16 @@ model TwitterAccount {
   followerCount       Int?
 
   tweets              Tweet[]
-  oauth2Tokens        OAuth2Token[]
+  oauth2Token        OAuth2Token @relation(fields: [oauth2TokenId], references: [id], onDelete: Cascade)
 
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   painPoint           PainPoint?
   mentions            Mention[]
+  quoteTweets         QuoteTweet[]
+  accountAnalyticData AccountAnalyticData?
+  directMessages      DirectMessage[]
+  followers           Follower[]
+  followerHistories   FollowerHistory[]
 
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -133,7 +139,7 @@ model OAuth2Token {
   expiresAt        Int?
   tokenType        String? // E.g., "Bearer"
 
-  twitterAccount   TwitterAccount? @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
+  twitterAccount   TwitterAccount?
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @default(now())
@@ -208,7 +214,8 @@ model Tweet {
 
   twitterAccountId           String
   twitterAccount             TwitterAccount   @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
-
+  accountAnalyticDataId      String?
+ 
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
@@ -290,4 +297,72 @@ model Mention {
   metadata         Json?
   seen             Boolean  @default(false)
   createdAt        DateTime @default(now())
+}
+
+model DirectMessage {
+  id               String      @id @default(uuid())
+  twitterAccountId String
+  messageId        String   @unique
+  senderId         String
+  recipientId      String
+  text             String
+  authorId         String
+  authorName       String
+  authorUsername   String
+  authorProfileImageUrl String
+  createdAt        DateTime @default(now())
+  twitterAccount   TwitterAccount @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
+}
+model QuoteTweet {
+
+  id                    String      @id @default(uuid())
+  quoteId               String      @unique
+  tweetId               String
+  quoteText             String
+  twitterAccountId      String
+  twitterAccount        TwitterAccount @relation(fields: [twitterAccountId], references: [id])
+  authorId              String
+  authorUsername        String
+  authorName            String
+  authorProfileImageUrl String
+
+}
+
+model Follower {
+  id                String      @id @default(uuid())
+  twitterAccountId  String
+  twitterAccount    TwitterAccount @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
+  followerId        String   
+  username          String
+  followedAt        DateTime @default(now()) 
+  createdAt         DateTime @default(now())
+  @@index([twitterAccountId])
+}
+
+model AccountAnalyticData {
+  id                String    @id @default(uuid())
+  twitterAccountId  String    @unique
+  totalFollowers    Int?
+  followerGrowth    Int?
+  followerGrowthChange Int?
+  totalEngagements  Int?
+  totalEngagementsChange Int
+  dailyEngagement   Json
+  viralTweets       Int?
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  twitterAccount    TwitterAccount @relation(fields: [twitterAccountId], references: [id])
+}
+
+
+model FollowerHistory {
+  id                String          @id @default(uuid())
+  twitterAccountId  String         
+  twitterAccount    TwitterAccount  @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
+  followersCount    Int
+  recordedAt        DateTime        @default(now())
+
+  @@index([twitterAccountId, recordedAt])
 }

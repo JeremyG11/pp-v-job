@@ -10,12 +10,14 @@
 
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@langchain/langgraph": ["../langgraph/src"]
     }
   },
   "include": ["./src/**/*", "./index.d.ts", "src/types.ts"],
   "ts-node": {
     "esm": true,
     "files": true
-  }
+  },
+  "exclude": ["node_modules"]
 }

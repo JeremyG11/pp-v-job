@@ -1,6 +1,5 @@
 import { db } from "./db";
 import { TwitterApi } from "twitter-api-v2";
-
 const CLIENT_ID = process.env.AUTH_TWITTER_ID!;
 const CLIENT_SECRET = process.env.AUTH_TWITTER_SECRET!;
 
@@ -11,6 +10,10 @@ export async function ensureValidAccessToken(accountId: string) {
 
   if (!account) {
     throw new Error("Account not found");
+  }
+
+  if (!account.accessToken) {
+    throw new Error("Access token not found");
   }
 
   const currentTime = Math.floor(Date.now() / 1000);
@@ -31,7 +34,6 @@ export async function ensureValidAccessToken(accountId: string) {
 
       await db.twitterAccount.update({
         where: { id: account.id },
-
         data: {
           accessToken,
           refreshToken: refreshToken ?? null,
@@ -43,9 +45,8 @@ export async function ensureValidAccessToken(accountId: string) {
       account.accessToken = accessToken;
       account.refreshToken = refreshToken ?? null;
       account.expiresIn = Math.floor(Date.now() / 1000) + expiresIn;
-    } catch (error) {
-      console.log("Error rotating access token:", error);
-      throw new Error("Failed to refresh access token");
+    } catch (error: any) {
+      throw error;
     }
   }
 
