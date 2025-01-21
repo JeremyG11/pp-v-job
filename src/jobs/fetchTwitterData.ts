@@ -4,27 +4,24 @@ import { TweetAccountStatus, TwitterAccount } from "@prisma/client";
 import { ensureValidAccessToken } from "@/lib/ensure-valid-token";
 
 // Function to fetch and process Twitter account analytics
-export const fetchTwitterData = async () => {
+export const fetchTwitterData = async (twitterAccountId: string) => {
   try {
-    const twitterAccounts = await db.twitterAccount.findMany({
-      where: { status: TweetAccountStatus.ACTIVE },
+    const account = await db.twitterAccount.findFirst({
+      where: { id: twitterAccountId, status: TweetAccountStatus.ACTIVE },
     });
 
-    if (!twitterAccounts.length) {
-      console.log("No active Twitter accounts found.");
+    if (!account) {
+      console.log("No active Twitter account found.");
       return;
     }
 
-    const analyticsTasks = twitterAccounts.map(async (account) => {
-      try {
-        await processAccountAnalytics(account);
-        console.log(`Successfully processed account: ${account.id}`);
-      } catch (error) {
-        console.log(`Error processing account ${account.id}:`, error);
-      }
-    });
+    try {
+      await processAccountAnalytics(account);
+      console.log(`Successfully processed account: ${account.id}`);
+    } catch (error) {
+      console.log(`Error processing account ${account.id}:`, error);
+    }
 
-    await Promise.all(analyticsTasks);
     console.log("All Twitter data fetch and analytics updates completed.");
   } catch (error) {
     console.log("Failed to fetch Twitter data:", error);

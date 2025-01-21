@@ -1,53 +1,81 @@
 import OpenAI from "openai";
 import { db } from "@/lib/db";
 import { EngagementType } from "@prisma/client";
+import { assistantMapping } from "@/config/env";
+import { enumEngagementTypeMapping } from "@/config/constant";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-function getEngagementTone(engagementType: string): string {
-  switch (engagementType) {
-    case "agreeableness_agree":
-      return `
-        Strong Agreement: Wholeheartedly endorsing the viewpoint ("Absolutely, this is spot on!").
-        Moderate Agreement: Expressing general concurrence with slight reservations ("I agree with most of your points, especially regarding...").
-      `;
-    case "agreeableness_disagree":
-      return `
-        Moderate Disagreement: Gently challenging the viewpoint with respect ("I see where you're coming from, though I have a different take on...").
-        Strong Disagreement: Respectfully opposing the viewpoint ("I understand your perspective, but I believe...").
-      `;
-    case "authority":
-      return `
-        Informative Insights: Sharing relevant information or experiences ("In our experience, implementing X can lead to...").
-        Expert Opinions: Providing professional viewpoints or interpretations ("From an industry standpoint, this trend indicates...").
-        Guidance and Advice: Offering actionable recommendations ("A practical approach to this issue is...").
-        Clarifications: Elucidating complex concepts or misconceptions ("To clarify, the process involves...").
-        Thought Leadership: Presenting forward-thinking ideas or predictions ("Looking ahead, we anticipate that...").
-      `;
-    case "empathy":
-      return `
-        Simple Empathy: "I understand how frustrating this can be."
-        Detailed Compassion: "Here's how we've seen businesses navigate this situation successfully."
-      `;
-    case "solution":
-      return `
-        Broad Suggestions: "A possible solution to this could be..."
-        Detailed Actionable Tips: "Here's a step-by-step approach that has worked in similar cases..."
-      `;
-    case "humor":
-      return "Use lighthearted or witty responses to create a memorable interaction.";
-    case "question":
-      return "Pose thoughtful and context-relevant questions to spark conversation.";
-    case "contrarian":
-      return "Provide respectful counterpoints or alternative views.";
-    case "trend":
-      return "Align the tweet topic with current, relevant industry trends.";
-    case "what_if":
-      return "Use imaginative scenarios or hypotheticals to engage users creatively.";
-    default:
-      return "Neutral, professional tone.";
+async function processTweetWithAI(
+  tweetText: string,
+  engagementType: string
+): Promise<string> {
+  try {
+    const normalizedEngagementType = engagementType.toLowerCase();
+
+    const assistantId = assistantMapping[normalizedEngagementType];
+    if (!assistantId) {
+      throw new Error(
+        `No assistant found for engagement type: ${engagementType}`
+      );
+    }
+
+    // Create a thread
+    const thread = await openai.beta.threads.create();
+
+    // Prepare prompt to instruct AI to generate 5 responses
+    const prompt = `
+      You are an expert social media strategist. Your task is to generate 
+      **five diverse responses** based on the following engagement type:
+
+      Engagement Type: ${normalizedEngagementType}
+      Tweet: "${tweetText}"
+
+      Please provide **five unique responses**, each formatted as follows:
+
+      1. [Response Type]: [Response Text]
+      2. [Response Type]: [Response Text]
+      3. [Response Type]: [Response Text]
+      4. [Response Type]: [Response Text]
+      5. [Response Type]: [Response Text]
+    `;
+
+    await openai.beta.threads.messages.create(thread.id, {
+      role: "user",
+      content: prompt,
+    });
+
+    const run = await openai.beta.threads.runs.create(thread.id, {
+      assistant_id: assistantId,
+    });
+
+    while (true) {
+      const runStatus = await openai.beta.threads.runs.retrieve(
+        thread.id,
+        run.id
+      );
+
+      if (runStatus.status === "completed") break;
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    // Fetch assistant's response
+    const messages = await openai.beta.threads.messages.list(thread.id);
+
+    // Extract and return the assistant response
+    const messageContent = messages.data[0]?.content[0];
+
+    const textContent =
+      "text" in messageContent
+        ? messageContent.text.value
+        : "No response generated.";
+    return textContent;
+  } catch (error) {
+    console.log("Error processing tweet:", error);
+    return "Error processing the tweet response.";
   }
 }
 
@@ -59,20 +87,6 @@ async function fetchAppPainpoint(accountId: string) {
     throw new Error("App's pain point is not properly configured.");
 
   return appPainpoint.siteSummary ?? "";
-}
-
-async function generatePromptResponse(prompt: string) {
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: "You generate engaging tweet responses." },
-      { role: "user", content: prompt },
-    ],
-    max_tokens: 500,
-    temperature: 0.7,
-  });
-
-  return response.choices[0]?.message?.content || "";
 }
 
 function parseGeneratedResponse(generatedResponse: string) {
@@ -133,30 +147,41 @@ export async function generateResponseForTweet(
 ) {
   try {
     const description = await fetchAppPainpoint(accountId);
-    const engagementTone = getEngagementTone(engagementType);
-
-    const prompt = `
-      Create a response for the following tweet:
-      Tweet: "${tweetText}"
-      Engagement Type: ${engagementType}
-      Tone Guidelines: ${engagementTone}
-      Business Context: "${description}"
-      Format the response as:
-      1. [Response Type]: [Response Text]
-    `;
-
-    const generatedResponse = await generatePromptResponse(prompt);
-    console.log(
-      `Generated response for tweet ${tweetId}: ${generatedResponse}`
+    const aiResponse = await processTweetWithAI(
+      tweetText,
+      engagementType.toLowerCase()
     );
 
-    const response = parseGeneratedResponse(generatedResponse);
-    if (response) {
-      await saveGeneratedResponse(tweetId, response, engagementType);
-    } else {
-      console.log(`No valid response generated for tweet ${tweetId}`);
-    }
+    console.log("AI response:", aiResponse);
+    const responsesArray = aiResponse
+      .split("\n")
+      .map((line) => {
+        // Match both formats
+        const match =
+          line.match(/^\d+\. \*\*(.+?)\*\*: (.+)$/) ||
+          line.match(/^\d+\. \[(.+?)\]: (.+)$/);
+        return match
+          ? {
+              responseType: match[1].trim(),
+              responseText: match[2].trim().replace(/^"|"$/g, ""),
+            }
+          : null;
+      })
+      .filter(Boolean) as { responseType: string; responseText: string }[];
 
+    const response = await db.$transaction(
+      responsesArray.map(({ responseText, responseType }) =>
+        db.generatedTweetResponse.create({
+          data: {
+            tweetId,
+            response: responseText,
+            engagementType:
+              enumEngagementTypeMapping[engagementType.toLowerCase()],
+            responseType,
+          },
+        })
+      )
+    );
     return response;
   } catch (error) {
     console.log(`Error generating response for tweet ${tweetId}:`, error);
@@ -167,6 +192,7 @@ export async function generateResponseForTweet(
 async function fetchLatestTweets() {
   return await db.tweet.findMany({
     where: {
+      isRetweet: false,
       createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
     },
     orderBy: {
@@ -177,9 +203,23 @@ async function fetchLatestTweets() {
 }
 
 function getTopTweets(tweets: any[]) {
-  return tweets
-    .sort((a, b) => b.impressionCount - a.impressionCount)
-    .slice(0, 10);
+  tweets.sort((a, b) => {
+    const aImpressions =
+      a.impressionCount +
+      a.likeCount +
+      a.retweetCount +
+      a.replyCount +
+      a.quoteCount;
+
+    const bImpressions =
+      b.impressionCount +
+      b.likeCount +
+      b.retweetCount +
+      b.replyCount +
+      b.quoteCount;
+    return bImpressions - aImpressions;
+  });
+  return tweets.slice(0, 10);
 }
 
 export async function generateResponsesForTopTweets() {
