@@ -81,22 +81,22 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
     },
     timezone: userTimezone,
   },
-  {
-    id: `fetch-twitter-data-${user.id}`,
-    /**
-     * Fetch Twitter data every 60 minutes.
-     * This is a cron expression that runs every 60 minutes.
-     * This job is scheduled to run after the refresh-access-token job.
-     */
+  // {
+  //   id: `fetch-twitter-data-${user.id}`,
+  //   /**
+  //    * Fetch Twitter data every 60 minutes.
+  //    * This is a cron expression that runs every 60 minutes.
+  //    * This job is scheduled to run after the refresh-access-token job.
+  //    */
 
-    schedule: "0 0 * * *",
-    handler: async () => {
-      console.log(`Fetching Twitter data for user ${user.id}...`);
-      await fetchTwitterData();
-      console.log(`Completed fetching Twitter data for user ${user.id}.`);
-    },
-    timezone: userTimezone,
-  },
+  //   schedule: "0 0 * * *",
+  //   handler: async () => {
+  //     console.log(`Fetching Twitter data for user ${user.id}...`);
+  //     await fetchTwitterData();
+  //     console.log(`Completed fetching Twitter data for user ${user.id}.`);
+  //   },
+  //   timezone: userTimezone,
+  // },
   {
     id: `fetch-dms-${user.id}`,
     /**

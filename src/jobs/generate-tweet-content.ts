@@ -159,7 +159,8 @@ export async function generateResponseForTweet(
         // Match both formats
         const match =
           line.match(/^\d+\. \*\*(.+?)\*\*: (.+)$/) ||
-          line.match(/^\d+\. \[(.+?)\]: (.+)$/);
+          line.match(/^\d+\. \[(.+?)\]: (.+)$/) ||
+          line.match(/^\d+\. (.+?): (.+)$/);
         return match
           ? {
               responseType: match[1].trim(),
