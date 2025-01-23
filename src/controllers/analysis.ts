@@ -128,6 +128,7 @@ export const AnalyzeSiteController = async (req: Request, res: Response) => {
         error: "The site returned no content. Please try again later.",
       });
     } else {
+      console.log("Error analyzing URL:", error.message);
       res.status(500).send({ error: "Failed to analyze the URL." });
     }
   }
