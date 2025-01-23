@@ -9,7 +9,9 @@ const port = process.env.PORT || 3000;
 const app: Application = express();
 dotenv.config();
 
-app.use(cors({ origin: "http://localhost:3000", credentials: true }));
+const ALLOW_ORIGIN = process.env.ALLOW_ORIGIN || "http://localhost:3000";
+
+app.use(cors({ origin: ALLOW_ORIGIN, credentials: true }));
 app.use(express.json());
 
 scheduleJobs();

@@ -117,13 +117,11 @@ export const AnalyzeSiteController = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error analyzing URL:", error.message);
 
-    // Check if the error is due to the site being down or not responding
     if (error.code === "ECONNABORTED" || error.response?.status >= 500) {
       res.status(503).send({
         error: "The site is down or not responding. Please try again later.",
       });
     } else if (error.message === "The site returned no content.") {
-      // Handle cases where the site returns no content
       res.status(502).send({
         error: "The site returned no content. Please try again later.",
       });
