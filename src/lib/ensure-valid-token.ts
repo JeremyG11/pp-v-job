@@ -1,24 +1,34 @@
 import { db } from "./db";
 import { TwitterApi } from "twitter-api-v2";
+
 const CLIENT_ID = process.env.AUTH_TWITTER_ID!;
 const CLIENT_SECRET = process.env.AUTH_TWITTER_SECRET!;
 
-export async function ensureValidAccessToken(accountId: string) {
+// A buffer for refreshing the token, 5 minutes before expiration
+const TOKEN_EXPIRY_BUFFER = 300;
+
+export async function ensureValidAccessToken(
+  accountId: string
+): Promise<string> {
   const account = await db.twitterAccount.findUnique({
     where: { id: accountId },
   });
 
   if (!account) {
-    throw new Error("Account not found");
+    throw new Error("Twitter account not found");
   }
 
   if (!account.accessToken) {
-    throw new Error("Access token not found");
+    throw new Error("Access token is missing for this account");
   }
 
   const currentTime = Math.floor(Date.now() / 1000);
-  if (account.expiresIn && account.expiresIn < currentTime) {
-    // Refresh the access token
+  const tokenExpiry = account.expiresIn || 0;
+
+  // Check if the access token is about to expire
+  if (tokenExpiry - TOKEN_EXPIRY_BUFFER <= currentTime) {
+    console.log(`Refreshing token for account ${accountId}...`);
+
     const client = new TwitterApi({
       clientId: CLIENT_ID,
       clientSecret: CLIENT_SECRET,
@@ -26,29 +36,30 @@ export async function ensureValidAccessToken(accountId: string) {
 
     try {
       const {
-        client: refreshedClient,
-        accessToken,
-        refreshToken,
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
         expiresIn,
       } = await client.refreshOAuth2Token(account.refreshToken!);
 
+      const newExpiry = currentTime + expiresIn;
+
+      // Update the database with the refreshed tokens
       await db.twitterAccount.update({
-        where: { id: account.id },
+        where: { id: accountId },
         data: {
-          accessToken,
-          refreshToken: refreshToken ?? null,
-          expiresIn: Math.floor(Date.now() / 1000) + expiresIn,
+          accessToken: newAccessToken,
+          refreshToken: newRefreshToken ?? account.refreshToken, // Fallback to old refreshToken
+          expiresIn: newExpiry,
         },
       });
 
-      // Update the account object with the new tokens
-      account.accessToken = accessToken;
-      account.refreshToken = refreshToken ?? null;
-      account.expiresIn = Math.floor(Date.now() / 1000) + expiresIn;
+      console.log(`Token refreshed successfully for account ${accountId}`);
+      return newAccessToken;
     } catch (error: any) {
-      throw error;
+      console.error(`Failed to refresh token for account ${accountId}:`, error);
+      throw new Error("Failed to refresh the access token");
     }
   }
-
+  // Token is still valid, return the existing one
   return account.accessToken;
 }

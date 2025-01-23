@@ -7,7 +7,6 @@ import { fetchTwitterData } from "./fetchTwitterData";
 import { fetchTweetsForAccounts } from "./fetch-tweet";
 import { TweetAccountStatus, User } from "@prisma/client";
 import { generateResponsesForTopTweets } from "./generate-tweet-content";
-import { ensureValidAccessToken } from "@/lib/ensure-valid-token";
 
 // graph from langgraph
 import { graph } from "@/graphs";
@@ -22,9 +21,7 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
      */
     schedule: "0 0 * * *",
     handler: async () => {
-      console.log(`Fetching mentions for user ${user.id}...`);
       await fetchMentions();
-      console.log(`Completed fetching mentions for user ${user.id}.`);
     },
     timezone: userTimezone,
   },
@@ -37,11 +34,8 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
      */
     schedule: "5 0 * * *",
     handler: async () => {
-      console.log(`Fetching tweets for accounts for user ${user.id}...`);
       await fetchTweetsForAccounts(user.id);
-      console.log(`Generating tweet responses for user ${user.id}...`);
-      await generateResponsesForTopTweets();
-      console.log(`Completed generating responses for user ${user.id}.`);
+      await generateResponsesForTopTweets(user.id);
     },
     timezone: userTimezone,
   },
@@ -68,35 +62,30 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
      * This job is scheduled to run after the fetch-quote-tweets job.
      */
     schedule: "0 */6 * * *",
-    handler: async () => {
-      console.log(`Refreshing access tokens for user ${user.id}...`);
-      const twitterAccounts = await db.twitterAccount.findMany({
-        where: { status: TweetAccountStatus.ACTIVE },
-      });
+    handler: async () => {},
+    timezone: userTimezone,
+  },
+  {
+    id: `fetch-twitter-data-${user.id}`,
+    /**
+     * Fetch Twitter data every 60 minutes.
+     * This is a cron expression that runs every 60 minutes.
+     * This job is scheduled to run after the refresh-access-token job.
+     */
 
+    schedule: "0 0 * * *",
+    handler: async () => {
+      console.log(`Fetching Twitter data for user ${user.id}...`);
+      const twitterAccounts = await db.twitterAccount.findMany({
+        where: { userId: user.id, status: TweetAccountStatus.ACTIVE },
+      });
       for (const account of twitterAccounts) {
-        await ensureValidAccessToken(account.id);
-        console.log(`Refreshed access token for account ${account.id}.`);
+        await fetchTwitterData(account.id);
       }
+      console.log(`Completed fetching Twitter data for user ${user.id}.`);
     },
     timezone: userTimezone,
   },
-  // {
-  //   id: `fetch-twitter-data-${user.id}`,
-  //   /**
-  //    * Fetch Twitter data every 60 minutes.
-  //    * This is a cron expression that runs every 60 minutes.
-  //    * This job is scheduled to run after the refresh-access-token job.
-  //    */
-
-  //   schedule: "0 0 * * *",
-  //   handler: async () => {
-  //     console.log(`Fetching Twitter data for user ${user.id}...`);
-  //     await fetchTwitterData();
-  //     console.log(`Completed fetching Twitter data for user ${user.id}.`);
-  //   },
-  //   timezone: userTimezone,
-  // },
   {
     id: `fetch-dms-${user.id}`,
     /**
@@ -104,11 +93,9 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
      * This is a cron expression that runs at 12:20 AM every day.
      * This job is scheduled to run after the fetch-twitter-data job.
      */
-    schedule: "20 0 * * *",
+    schedule: "0 0 * * *",
     handler: async () => {
-      console.log(`Fetching DMs for user ${user.id}...`);
       await fetchDMs();
-      console.log(`Completed fetching DMs for user ${user.id}.`);
     },
     timezone: userTimezone,
   },

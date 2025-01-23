@@ -1,4 +1,5 @@
 import { db } from "../lib/db";
+import logger from "@/lib/logger";
 import { TwitterApi } from "twitter-api-v2";
 import { TweetAccountStatus } from "@prisma/client";
 import { ensureValidAccessToken } from "@/lib/ensure-valid-token";
@@ -10,87 +11,120 @@ export const fetchDMs = async () => {
     });
 
     if (!twitterAccounts.length) {
-      console.log("No active Twitter accounts found.");
+      logger.info("No active Twitter accounts found.");
       return;
     }
 
     for (const account of twitterAccounts) {
-      const twitterAccountId = account.id;
-      const userId = account.twitterUserId;
+      const { id: twitterAccountId, twitterUserId: userId } = account;
 
       if (!userId) {
-        console.log(
+        logger.warn(
           `No Twitter user ID found for account ID: ${twitterAccountId}`
         );
         continue;
       }
 
-      // Ensure access token is valid
       const accessToken = await ensureValidAccessToken(account.id);
-      if (!accessToken) {
-        console.log(`Invalid access token for account ID: ${account.id}`);
-        continue;
-      }
 
       const twitterClient = new TwitterApi(accessToken);
       const roClient = twitterClient.readOnly;
 
+      let nextToken: string | undefined = undefined;
+
       try {
-        // Fetch DMs
-        const { data: dms } = await roClient.v2.listDmEvents();
+        do {
+          const response = await roClient.v2.listDmEvents({
+            pagination_token: nextToken,
+          });
 
-        if (dms.data.length === 0) {
-          console.log(`No DMs found for account ${twitterAccountId}`);
-          continue;
-        }
+          logger.info(JSON.stringify(response));
 
-        console.log(JSON.stringify(dms, null, 2));
-        // Store DMs in the database
-        for (const dm of dms.data) {
-          const createdAt = new Date(dm.created_at);
-          if (isNaN(createdAt.getTime())) {
-            console.error(`Invalid date for DM ID: ${dm.id}`);
-            continue;
+          const dms = response.data.data || [];
+          if (dms.length === 0 && !nextToken) {
+            logger.info(`No DMs found for account ID: ${twitterAccountId}`);
+            break;
           }
 
-          await prisma.directMessage.upsert({
-            where: { messageId: dm.id },
-            update: {
-              senderId: dm.sender_id,
-            },
-            create: {
-              twitterAccountId,
-              messageId: dm.id,
-              senderId: dm.participant_ids[0], // Assuming the first participant is the sender
-              recipientId: dm.participant_ids[1], // Assuming the second participant is the recipient
-              text: dm.text,
-              createdAt: createdAt,
-            },
-          });
-        }
+          const dmsToUpsert = dms.map((dm) => {
+            const createdAt = new Date(dm.created_at);
+            if (isNaN(createdAt.getTime())) {
+              logger.error(`Invalid date for DM ID: ${dm.id}`);
+              return null;
+            }
 
-        console.log(
-          `DMs fetched and stored successfully for account ${twitterAccountId}`
+            return {
+              where: { messageId: dm.id },
+              update: {
+                senderId: dm.sender_id,
+              },
+              create: {
+                twitterAccountId: twitterAccountId,
+                messageId: dm.id,
+                senderId: dm.participant_ids?.[0] || null,
+                recipientId: dm.participant_ids?.[1] || null,
+                text: "text" in dm ? dm.text : "",
+                createdAt,
+              },
+            };
+          });
+
+          const validDmsToUpsert = dmsToUpsert.filter(Boolean);
+
+          // Perform batch upserts
+          for (const dm of validDmsToUpsert) {
+            await db.directMessage.upsert(dm);
+          }
+
+          logger.info(
+            `Processed ${validDmsToUpsert.length} DMs for account ID: ${twitterAccountId}`
+          );
+
+          nextToken = response.meta?.next_token;
+        } while (nextToken);
+
+        logger.info(
+          `Finished processing DMs for account ID: ${twitterAccountId}`
         );
       } catch (error) {
-        if (error.code === 403) {
-          console.error(
-            "Access forbidden. Ensure the access token has the required permissions."
-          );
-        } else if (error.code === 400) {
-          console.error("Invalid request. Check the parameters and try again.");
-        } else {
-          console.error("Failed to fetch DMs:", error);
-        }
+        handleTwitterApiError(
+          error,
+          `Fetching DMs for account ID: ${twitterAccountId}`
+        );
       }
     }
   } catch (error) {
-    if (error.code === 429) {
-      console.error("Rate limit reached. Please try again later.");
-    } else if (error.code === 503) {
-      console.error("Service unavailable. Please try again later.");
-    } else {
-      console.error("Failed to fetch DMs:", error);
-    }
+    handleTwitterApiError(error, "Fetching DMs globally");
+  }
+};
+
+/**
+ * Handles errors from Twitter API and logs them.
+ * @param error Error object
+ * @param context Context of the error
+ */
+const handleTwitterApiError = (error: any, context: string) => {
+  const errorCode = error?.code;
+
+  switch (errorCode) {
+    case 403:
+      logger.error(
+        `${context}: Access forbidden. Ensure the access token has the required permissions.`
+      );
+      break;
+    case 400:
+      logger.error(
+        `${context}: Invalid request. Check the parameters and try again.`
+      );
+      break;
+    case 429:
+      logger.error(`${context}: Rate limit reached. Please try again later.`);
+      break;
+    case 503:
+      logger.error(`${context}: Service unavailable. Please try again later.`);
+      break;
+    default:
+      logger.error(`${context}: An unexpected error occurred.`, error);
+      break;
   }
 };

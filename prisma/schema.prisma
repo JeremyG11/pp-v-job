@@ -89,7 +89,7 @@ model PainPoint {
 model TwitterAccount {
   id                  String    @id @default(uuid())
   userId              String
-  oauth2TokenId       String    @unique
+  oauth2TokenId       String
   username            String?      
   tweetLimit          Int?        // API rate limits
   twitterUserId       String
@@ -109,7 +109,7 @@ model TwitterAccount {
   followerCount       Int?
 
   tweets              Tweet[]
-  oauth2Token        OAuth2Token @relation(fields: [oauth2TokenId], references: [id], onDelete: Cascade)
+  oauth2Token         OAuth2Token  []
 
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   painPoint           PainPoint?
@@ -129,9 +129,9 @@ model TwitterAccount {
 
 model OAuth2Token {
   id               String  @id @default(uuid())
-  userId           String?  @unique
-  twitterAccountId String?  @unique
+  userId           String
   provider         String  
+
   codeVerifier     String? @db.Text
   state            String? @db.Text
   accessToken      String? @db.Text
@@ -139,12 +139,13 @@ model OAuth2Token {
   expiresAt        Int?
   tokenType        String? // E.g., "Bearer"
 
-  twitterAccount   TwitterAccount?
+  twitterAccountId String ?
+  twitterAccount   TwitterAccount? @relation(fields: [twitterAccountId], references: [id])
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @default(now())
 
-  @@unique([userId, twitterAccountId, provider]) 
+  @@unique([userId, provider]) 
   @@unique([state])
 
 }

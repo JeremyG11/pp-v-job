@@ -116,29 +116,6 @@ function parseGeneratedResponse(generatedResponse: string) {
   return null;
 }
 
-async function saveGeneratedResponse(
-  tweetId: string,
-  response: { responseType: string; responseText: string },
-  engagementType: string
-) {
-  try {
-    await db.generatedTweetResponse.create({
-      data: {
-        tweetId,
-        response: response.responseText,
-        engagementType:
-          EngagementType[
-            engagementType.toUpperCase() as keyof typeof EngagementType
-          ],
-        responseType: response.responseType,
-        isPrepared: true,
-      },
-    });
-  } catch (error) {
-    console.log(`Error saving response for tweet ${tweetId}:`, error);
-  }
-}
-
 export async function generateResponseForTweet(
   tweetId: string,
   tweetText: string,
@@ -147,6 +124,7 @@ export async function generateResponseForTweet(
 ) {
   try {
     const description = await fetchAppPainpoint(accountId);
+
     const aiResponse = await processTweetWithAI(
       tweetText,
       engagementType.toLowerCase()
@@ -190,11 +168,11 @@ export async function generateResponseForTweet(
   }
 }
 
-async function fetchLatestTweets() {
+async function fetchLatestTweets(twitterAccountId: string) {
   return await db.tweet.findMany({
     where: {
+      twitterAccountId,
       isRetweet: false,
-      createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
     },
     orderBy: {
       createdAt: "desc",
@@ -223,11 +201,16 @@ function getTopTweets(tweets: any[]) {
   return tweets.slice(0, 10);
 }
 
-export async function generateResponsesForTopTweets() {
+export async function generateResponsesForTopTweets(userId: string) {
   try {
-    const latestTweets = await fetchLatestTweets();
-    const bestTweets = getTopTweets(latestTweets);
+    const twitterAccounts = await db.twitterAccount.findMany({
+      where: { userId, status: "ACTIVE" },
+    });
 
+    if (twitterAccounts.length === 0) {
+      console.log("No active Twitter accounts found.");
+      return;
+    }
     const engagementTypes = [
       EngagementType.AUTHORITY,
       EngagementType.EMPATHY,
@@ -239,34 +222,39 @@ export async function generateResponsesForTopTweets() {
       EngagementType.WHAT_IF,
     ];
 
-    for (let i = 0; i < bestTweets.length; i++) {
-      const tweet = bestTweets[i];
-      const engagementType = engagementTypes[i % engagementTypes.length];
+    for (const account of twitterAccounts) {
+      const latestTweets = await fetchLatestTweets(account.id);
+      const bestTweets = getTopTweets(latestTweets);
 
-      const {
-        id: tweetId,
-        text: tweetText,
-        twitterAccountId: accountId,
-      } = tweet;
+      for (let i = 0; i < bestTweets.length; i++) {
+        const tweet = bestTweets[i];
+        const engagementType = engagementTypes[i % engagementTypes.length];
 
-      try {
-        console.log(
-          `Processing tweet ${tweetId} with engagement type ${engagementType}...`
-        );
-        await generateResponseForTweet(
-          tweetId,
-          tweetText,
-          engagementType,
-          accountId
-        );
-        console.log(
-          `Successfully generated response for tweet ${tweetId} with engagement type ${engagementType}.`
-        );
-      } catch (err) {
-        console.log(
-          `Error processing tweet ${tweetId} with engagement type ${engagementType}:`,
-          err
-        );
+        const {
+          id: tweetId,
+          text: tweetText,
+          twitterAccountId: accountId,
+        } = tweet;
+
+        try {
+          console.log(
+            `Processing tweet ${tweetId} with engagement type ${engagementType}...`
+          );
+          await generateResponseForTweet(
+            tweetId,
+            tweetText,
+            engagementType,
+            accountId
+          );
+          console.log(
+            `Successfully generated response for tweet ${tweetId} with engagement type ${engagementType}.`
+          );
+        } catch (err) {
+          console.log(
+            `Error processing tweet ${tweetId} with engagement type ${engagementType}:`,
+            err
+          );
+        }
       }
     }
   } catch (err) {

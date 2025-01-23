@@ -1,7 +1,6 @@
 import { db } from "../lib/db";
 import { TwitterApi } from "twitter-api-v2";
 import { TweetAccountStatus } from "@prisma/client";
-import { ensureValidAccessToken } from "../lib/ensure-valid-token";
 
 export const fetchTweetsForAccount = async (accountId: string) => {
   try {
@@ -17,20 +16,12 @@ export const fetchTweetsForAccount = async (accountId: string) => {
 
     const painPoint = account.painPoint;
 
-    // Ensure the Twitter account has a PainPoint with keywords
     if (!painPoint || !painPoint.keywords || painPoint.keywords.length === 0) {
       console.log(`No keywords found for account ID: ${account.id}`);
       return;
     }
 
-    // Ensure access token is valid
-    const accessToken = await ensureValidAccessToken(account.id);
-    if (!accessToken) {
-      console.log(`Invalid access token for account ID: ${account.id}`);
-      return;
-    }
-
-    const client = new TwitterApi(accessToken);
+    const client = new TwitterApi(account.accessToken);
     const roClient = client.readOnly;
 
     // Fetch tweets for each keyword
@@ -129,8 +120,7 @@ export const fetchTweetsForAccounts = async (userId: string) => {
       include: { painPoint: true },
     });
 
-    if (!twitterAccounts.length) {
-      console.log("No active Twitter accounts found.");
+    if (twitterAccounts.length === 0) {
       return;
     }
 

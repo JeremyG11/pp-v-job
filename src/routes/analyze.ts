@@ -1,8 +1,8 @@
 import express, { Router } from "express";
-import { webhookController } from "../controllers/webhook";
+import { AnalyzeSiteController } from "../controllers/analysis";
 
 const router: Router = express.Router();
 
-router.post("/", webhookController);
+router.post("/", AnalyzeSiteController);
 
 export default router;
