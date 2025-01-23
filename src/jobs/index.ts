@@ -11,6 +11,7 @@ import { generateResponsesForTopTweets } from "./generate-tweet-content";
 // graph from langgraph
 import { graph } from "@/graphs";
 import { initializeState } from "@/graphs/graph-init";
+import { refreshTwitterAccountAccessToken } from "./refreshTwitterAccountAccessToken";
 
 export const createJobs = (user: User, userTimezone: string): Job[] => [
   {
@@ -57,12 +58,13 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
   {
     id: `refresh-access-token-${user.id}`,
     /**
-     * Refresh access tokens every 6 hours.
-     * This is a cron expression that runs every 6 hours.
+     * Refresh access token every 1hrs and 30mins.
      * This job is scheduled to run after the fetch-quote-tweets job.
      */
-    schedule: "0 */6 * * *",
-    handler: async () => {},
+    schedule: "30 */1 * * *",
+    handler: async () => {
+      refreshTwitterAccountAccessToken(user.id);
+    },
     timezone: userTimezone,
   },
   {
