@@ -9,7 +9,8 @@ const port = process.env.PORT || 3000;
 const app: Application = express();
 dotenv.config();
 
-const ALLOW_ORIGIN = process.env.ALLOW_ORIGIN || "http://localhost:3000";
+const ALLOW_ORIGIN =
+  process.env.ALLOW_ORIGIN || "https://pain-point-viral-web.vercel.app";
 
 app.use(cors({ origin: ALLOW_ORIGIN, credentials: true }));
 app.use(express.json());
