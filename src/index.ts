@@ -12,7 +12,7 @@ dotenv.config();
 const ALLOW_ORIGIN =
   process.env.ALLOW_ORIGIN || "https://pain-point-viral-web.vercel.app";
 
-app.use(cors({ origin: ALLOW_ORIGIN, credentials: true }));
+app.use(cors({ origin: ALLOW_ORIGIN || "*", credentials: true }));
 app.use(express.json());
 
 scheduleJobs();
