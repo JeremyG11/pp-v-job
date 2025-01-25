@@ -17,7 +17,6 @@ type AnalyzeRequest = {
 type AnalyzeResponse = {
   title: string;
   metaDescription: string;
-  keywords: string;
   headings: string[];
   summary: string;
 };
@@ -56,10 +55,6 @@ export const AnalyzeSiteController = async (req: Request, res: Response) => {
       document
         .querySelector('meta[name="description"]')
         ?.getAttribute("content") || "No Meta Description Found";
-    const keywords =
-      document
-        .querySelector('meta[name="keywords"]')
-        ?.getAttribute("content") || "No Keywords Found";
 
     const headings = Array.from(document.querySelectorAll("h1"))
       .map((el) => el.textContent?.trim() || "")
@@ -70,7 +65,6 @@ export const AnalyzeSiteController = async (req: Request, res: Response) => {
     let summary = "AI analysis not enabled.";
 
     if (process.env.OPENAI_API_KEY) {
-      console.log(`Calling OpenAI API with model: gpt-4o-mini`);
       const aiResponse = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         temperature: 0.7,
@@ -82,10 +76,9 @@ export const AnalyzeSiteController = async (req: Request, res: Response) => {
           },
           {
             role: "user",
-            content: `Analyze this website content and provide a detailed description of its purpose, services, and the problems it solves. Additionally, suggest relevant search keywords that can be used to query the Twitter API:
+            content: `Analyze this website content and provide a concise summary of its purpose, services, offerings, and the problems it solves:
             Title: ${title}
             Meta Description: ${metaDescription}
-            Keywords: ${keywords}
             Headings: ${headings.join(", ")}
             Body Text: ${bodyText}`,
           },
@@ -96,11 +89,9 @@ export const AnalyzeSiteController = async (req: Request, res: Response) => {
         "Unable to generate a summary.";
     }
 
-    // Return response
     const response: AnalyzeResponse = {
       title,
       metaDescription,
-      keywords,
       headings,
       summary,
     };
@@ -109,7 +100,6 @@ export const AnalyzeSiteController = async (req: Request, res: Response) => {
       where: { twitterAccountId },
       data: {
         siteSummary: summary,
-        siteKeywords: keywords,
         metaDescription,
       },
     });

@@ -6,6 +6,16 @@ import { TweetAccountStatus } from "@prisma/client";
 
 dotenv.config();
 
+const BUFFER_MS = 5 * 60 * 1000;
+const now = new Date();
+
+const yesterdayMidnight = new Date(
+  Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1)
+);
+const end_time_with_buffer = new Date(
+  yesterdayMidnight.getTime() - BUFFER_MS
+).toISOString();
+
 /**
  * Fetches mentions for all active Twitter accounts.
  */
@@ -20,79 +30,149 @@ export const fetchMentions = async () => {
       return;
     }
 
-    for (const account of twitterAccounts) {
-      if (!account.twitterUserId) {
-        logger.warn(`No Twitter user ID for account ID: ${account.id}`);
-        continue;
-      }
+    // for (const account of twitterAccounts) {
+    //   if (!account.twitterUserId) {
+    //     logger.warn(`No Twitter user ID for account ID: ${account.id}`);
+    //     continue;
+    //   }
 
-      logger.info(`Fetching mentions for account: ${account.username}`);
-      const client = new TwitterApi(account.accessToken);
-      const roClient = client.readOnly;
-      let nextToken: string | undefined;
+    //   logger.info(`Fetching mentions for account: ${account.username}`);
+    //   const client = new TwitterApi(account.accessToken);
+    //   const roClient = client.readOnly;
+    //   let nextToken: string | undefined;
 
-      do {
+    //   do {
+    //     try {
+    //       const {
+    //         data: mentions,
+    //         meta,
+    //         includes,
+    //       } = await roClient.v2.userMentionTimeline(account.twitterUserId, {
+    //         end_time: end_time_with_buffer,
+    //         pagination_token: nextToken,
+    //         expansions: ["author_id"],
+    //         "user.fields": ["username", "name", "profile_image_url"],
+    //       });
+
+    //       const userMap = (includes?.users || []).reduce(
+    //         (acc, user) => ({
+    //           ...acc,
+    //           [user.id]: user,
+    //         }),
+    //         {} as Record<string, any>
+    //       );
+
+    //       const mentionsToUpsert = mentions.data.map((mention) => {
+    //         const user = userMap[mention.author_id] || {};
+    //         return {
+    //           where: { mentionId: mention.id },
+    //           update: {},
+    //           create: {
+    //             mentionId: mention.id,
+    //             tweetId: mention.id,
+    //             mentionText: mention.text,
+    //             twitterAccountId: account.id,
+    //             authorId: user.id,
+    //             authorUsername: user.username,
+    //             authorName: user.name,
+    //             authorProfileImageUrl: user.profile_image_url,
+    //             timestamp: mention.created_at,
+    //           },
+    //         };
+    //       });
+
+    //       // Perform batch upserts
+    //       for (const mention of mentionsToUpsert) {
+    //         await db.mention.upsert(mention);
+    //       }
+
+    //       logger.info(
+    //         `Processed ${mentions.data.length} mentions for account: ${account.username}`
+    //       );
+
+    //       nextToken = meta?.next_token;
+    //     } catch (pageError) {
+    //       logger.error(
+    //         `Error fetching mentions for account ${account.username}:`,
+    //         pageError
+    //       );
+    //       break;
+    //     }
+    //   } while (nextToken);
+
+    //   logger.info(
+    //     `Finished processing mentions for account: ${account.username}`
+    //   );
+    // }
+    await Promise.all(
+      twitterAccounts.map(async (account) => {
         try {
-          const {
-            data: mentions,
-            meta,
-            includes,
-          } = await roClient.v2.userMentionTimeline(account.twitterUserId, {
-            pagination_token: nextToken,
-            expansions: ["author_id"],
-            "user.fields": ["username", "name", "profile_image_url"],
-          });
+          logger.info(`Fetching mentions for account: ${account.username}`);
+          const client = new TwitterApi(account.accessToken);
+          const roClient = client.readOnly;
+          let nextToken: string | undefined;
 
-          const userMap = (includes?.users || []).reduce(
-            (acc, user) => ({
-              ...acc,
-              [user.id]: user,
-            }),
-            {} as Record<string, any>
-          );
+          do {
+            const {
+              data: mentions,
+              meta,
+              includes,
+            } = await roClient.v2.userMentionTimeline(account.twitterUserId, {
+              end_time: end_time_with_buffer,
+              pagination_token: nextToken,
+              expansions: ["author_id"],
+              "user.fields": ["username", "name", "profile_image_url"],
+            });
 
-          const mentionsToUpsert = mentions.data.map((mention) => {
-            const user = userMap[mention.author_id] || {};
-            return {
-              where: { mentionId: mention.id },
-              update: {},
-              create: {
-                mentionId: mention.id,
-                tweetId: mention.id,
-                mentionText: mention.text,
-                twitterAccountId: account.id,
-                authorId: user.id,
-                authorUsername: user.username,
-                authorName: user.name,
-                authorProfileImageUrl: user.profile_image_url,
-                timestamp: mention.created_at,
-              },
-            };
-          });
+            const userMap = (includes?.users || []).reduce(
+              (acc, user) => ({
+                ...acc,
+                [user.id]: user,
+              }),
+              {} as Record<string, any>
+            );
 
-          // Perform batch upserts
-          for (const mention of mentionsToUpsert) {
-            await db.mention.upsert(mention);
-          }
+            const mentionsToUpsert = mentions.data.map((mention) => {
+              const user = userMap[mention.author_id] || {};
+              return {
+                where: { mentionId: mention.id },
+                update: {},
+                create: {
+                  mentionId: mention.id,
+                  tweetId: mention.id,
+                  mentionText: mention.text,
+                  twitterAccountId: account.id,
+                  authorId: user.id,
+                  authorUsername: user.username,
+                  authorName: user.name,
+                  authorProfileImageUrl: user.profile_image_url,
+                  timestamp: mention.created_at,
+                },
+              };
+            });
+
+            await db.$transaction(
+              mentionsToUpsert.map((mention) => db.mention.upsert(mention))
+            );
+
+            logger.info(
+              `Processed ${mentions.data.length} mentions for account: ${account.username}`
+            );
+
+            nextToken = meta?.next_token;
+          } while (nextToken);
 
           logger.info(
-            `Processed ${mentions.data.length} mentions for account: ${account.username}`
+            `Finished processing mentions for account: ${account.username}`
           );
-
-          nextToken = meta?.next_token;
-        } catch (pageError) {
+        } catch (accountError) {
           logger.error(
-            `Error fetching mentions for account ${account.username}:`,
-            pageError
+            `Error processing mentions for account ${account.username}:`,
+            accountError
           );
-          break;
         }
-      } while (nextToken);
-
-      logger.info(
-        `Finished processing mentions for account: ${account.username}`
-      );
-    }
+      })
+    );
   } catch (error) {
     logger.error("Error fetching mentions:", error);
   }
