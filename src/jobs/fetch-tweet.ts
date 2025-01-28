@@ -1,6 +1,7 @@
 import { db } from "../lib/db";
 import { TwitterApi } from "twitter-api-v2";
 import { TweetAccountStatus } from "@prisma/client";
+import { ensureValidAccessToken } from "@/lib/ensure-valid-token";
 
 export const fetchTweetsForAccount = async (accountId: string) => {
   try {
@@ -21,7 +22,13 @@ export const fetchTweetsForAccount = async (accountId: string) => {
       return;
     }
 
-    const client = new TwitterApi(account.accessToken);
+    const accessToken = await ensureValidAccessToken(account.id);
+
+    if (!accessToken) {
+      console.log(`No access token found for account ID: ${account.id}`);
+      return;
+    }
+    const client = new TwitterApi(accessToken);
     const roClient = client.readOnly;
 
     // Fetch tweets for each keyword
