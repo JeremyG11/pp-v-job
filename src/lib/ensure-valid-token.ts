@@ -35,12 +35,12 @@ export async function ensureValidAccessToken(
       where: { id: accountId },
       data: {
         accessToken: newAccessToken,
-        refreshToken: newRefreshToken ?? account.refreshToken, // Retain old refreshToken if new one isn't provided
+        refreshToken: newRefreshToken,
         expiresIn: newExpiry,
       },
     });
 
-    console.log(`Token refreshed successfully for account ${accountId}`);
+    console.log(`Token refreshed successfully for account ${account.username}`);
     return newAccessToken;
   } catch (error) {
     console.error(
