@@ -2,6 +2,7 @@ import cron from "node-cron";
 import { db } from "./lib/db";
 import { createJobs } from "./jobs";
 import { getUserTimezone } from "./lib/util";
+import { refreshTokensProactively } from "./jobs/refreshTwitterAccountAccessToken";
 
 /**
  * Schedule all the jobs for a given user.
@@ -34,3 +35,13 @@ export const scheduleJobs = async () => {
     }
   }
 };
+
+/**
+ * Schedule the proactive token refresh job.
+ * This job will run every 15 minutes to check if the access token
+ * is about to expire and refresh it proactively.
+ *
+ */
+cron.schedule("*/15 * * * *", async () => {
+  await refreshTokensProactively();
+});

@@ -10,7 +10,8 @@ const openai = new OpenAI({
 
 async function processTweetWithAI(
   tweetText: string,
-  engagementType: string
+  engagementType: string,
+  appName: string
 ): Promise<string> {
   try {
     const normalizedEngagementType = engagementType.toLowerCase();
@@ -27,13 +28,13 @@ async function processTweetWithAI(
 
     // Prepare prompt to instruct AI to generate 5 responses
     const prompt = `
-      You are an expert social media strategist. Your task is to generate 
       **five diverse responses** based on the following engagement type:
-
+      
       Engagement Type: ${normalizedEngagementType}
       Tweet: "${tweetText}"
+      app's name: "${appName}"
 
-      Please provide **five unique responses**, each formatted as follows:
+      Please provide **five unique responses**, **mention ${appName}when neccessary**, each formatted as follows:
 
       1. [Response Type]: [Response Text]
       2. [Response Type]: [Response Text]
@@ -86,7 +87,7 @@ async function fetchAppPainpoint(accountId: string) {
   if (!appPainpoint || appPainpoint.siteSummary === "N/A")
     throw new Error("App's pain point is not properly configured.");
 
-  return appPainpoint.siteSummary ?? "";
+  return appPainpoint;
 }
 
 function parseGeneratedResponse(generatedResponse: string) {
@@ -123,11 +124,12 @@ export async function generateResponseForTweet(
   accountId: string
 ) {
   try {
-    const description = await fetchAppPainpoint(accountId);
+    const painPoint = await fetchAppPainpoint(accountId);
 
     const aiResponse = await processTweetWithAI(
       tweetText,
-      engagementType.toLowerCase()
+      engagementType.toLowerCase(),
+      painPoint.name
     );
 
     console.log("AI response:", aiResponse);
