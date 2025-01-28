@@ -77,7 +77,7 @@ export const AnalyzeSiteController = async (req: Request, res: Response) => {
           {
             role: "user",
             content: `Analyze this website content and provide a concise summary of its purpose, services, offerings, and the problems it solves:
-            Title: ${title}
+            Title: ${title} 
             Meta Description: ${metaDescription}
             Headings: ${headings.join(", ")}
             Body Text: ${bodyText}`,
@@ -96,6 +96,7 @@ export const AnalyzeSiteController = async (req: Request, res: Response) => {
       summary,
     };
 
+    console.log("Analysis complete:", response);
     await db.painPoint.update({
       where: { twitterAccountId },
       data: {

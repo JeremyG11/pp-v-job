@@ -61,7 +61,7 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
      * Refresh access token every 1hrs and 30mins.
      * This job is scheduled to run after the fetch-quote-tweets job.
      */
-    schedule: "30 */1 * * *",
+    schedule: "*/15 * * * *",
     handler: async () => {
       refreshTwitterAccountAccessToken(user.id);
     },

@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import { db } from "./lib/db";
-import { getUserTimezone } from "./lib/util";
 import { createJobs } from "./jobs";
+import { getUserTimezone } from "./lib/util";
 
 /**
  * Schedule all the jobs for a given user.
