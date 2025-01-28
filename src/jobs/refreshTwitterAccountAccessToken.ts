@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { ensureValidAccessToken } from "@/lib/ensure-valid-token";
+import logger from "@/lib/logger";
 
 export const refreshTokensProactively = async () => {
   const accounts = await db.twitterAccount.findMany({
@@ -11,10 +12,7 @@ export const refreshTokensProactively = async () => {
       await ensureValidAccessToken(account.id);
       console.log(`Refreshed token for account ${account.id}.`);
     } catch (error) {
-      console.error(
-        `Failed to refresh token for account ${account.id}:`,
-        error.message
-      );
+      logger.error(`Error refreshing token for account ${account.id}:`, error);
     }
   }
 };
