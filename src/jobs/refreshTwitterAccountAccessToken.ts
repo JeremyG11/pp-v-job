@@ -12,7 +12,10 @@ export const refreshTokensProactively = async () => {
       await ensureValidAccessToken(account.id);
       console.log(`Refreshed token for account ${account.id}.`);
     } catch (error) {
-      logger.error(`Error refreshing token for account ${account.id}:`, error);
+      logger.error(
+        `Error refreshing token for account ${account.username}:`,
+        error
+      );
     }
   }
 };
