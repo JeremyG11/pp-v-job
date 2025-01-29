@@ -34,7 +34,7 @@ async function processTweetWithAI(
       Tweet: "${tweetText}"
       app's name: "${appName}"
 
-      Please provide **five unique responses**, **mention ${appName}when neccessary**, each formatted as follows:
+      Please provide **five unique responses**, **mention ${appName} in hashtag when neccessary**, each formatted as follows:
 
       1. [Response Type]: [Response Text]
       2. [Response Type]: [Response Text]

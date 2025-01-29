@@ -38,8 +38,8 @@ export const scheduleJobs = async () => {
 
 /**
  * Schedule the proactive token refresh job.
- * This job will run every 15 minutes to check if the access token
  * is about to expire and refresh it proactively.
+ * This job will run every 15 minutes to check if the access token
  *
  */
 cron.schedule("*/15 * * * *", async () => {
