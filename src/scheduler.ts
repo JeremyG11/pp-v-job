@@ -1,8 +1,9 @@
 import cron from "node-cron";
 import { db } from "./lib/db";
+import logger from "./lib/logger";
 import { createJobs } from "./jobs";
 import { getUserTimezone } from "./lib/util";
-import { refreshTokensProactively } from "./jobs/refreshTwitterAccountAccessToken";
+import { refreshTokensProactively } from "./jobs/refresh-access-token";
 
 /**
  * Schedule all the jobs for a given user.
@@ -43,5 +44,11 @@ export const scheduleJobs = async () => {
  *
  */
 cron.schedule("*/15 * * * *", async () => {
-  await refreshTokensProactively();
+  try {
+    logger.info("🔄 Running scheduled token refresh check...");
+    await refreshTokensProactively();
+    logger.info("✅ Token refresh completed.");
+  } catch (error) {
+    logger.error("❌ Token refresh cron job failed:", error);
+  }
 });

@@ -119,6 +119,7 @@ model TwitterAccount {
   directMessages      DirectMessage[]
   followers           Follower[]
   followerHistories   FollowerHistory[]
+  engagements         Engagement[]
 
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -341,20 +342,22 @@ model Follower {
 }
 
 model AccountAnalyticData {
-  id                String    @id @default(uuid())
-  twitterAccountId  String    @unique
-  totalFollowers    Int?
-  followerGrowth    Int?
-  followerGrowthChange Int?
-  totalEngagements  Int?
-  totalEngagementsChange Int
-  dailyEngagement   Json
-  viralTweets       Int?
+  id                     String    @id @default(uuid())
+  twitterAccountId       String    @unique
 
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  totalFollowers         Int?
+  followerGrowth         Int?  
+  followerGrowthChange   Float?  
+  totalEngagements       Int?
+  totalEngagementsChange Int?      
 
-  twitterAccount    TwitterAccount @relation(fields: [twitterAccountId], references: [id])
+  viralTweets            Int?
+  lastUpdated            DateTime?  
+
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  twitterAccount         TwitterAccount @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
 }
 
 
@@ -367,3 +370,21 @@ model FollowerHistory {
 
   @@index([twitterAccountId, recordedAt])
 }
+
+model Engagement {
+  id                String   @id @default(uuid())
+  twitterAccountId  String
+  tweetId           String    
+  engagementDate    DateTime  @default(now()) 
+  likeCount         Int       @default(0)
+  retweetCount      Int       @default(0)
+  replyCount        Int       @default(0)
+  totalEngagement   Int       @default(0)
+
+  twitterAccount    TwitterAccount @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+
+  @@index([twitterAccountId])
+  @@index([tweetId])
+}
+

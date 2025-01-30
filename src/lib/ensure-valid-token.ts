@@ -50,12 +50,9 @@ export async function ensureValidAccessToken(
 
     if (error.response?.data?.error === "invalid_request") {
       console.error(
-        `Refresh token expired for account ${accountId}. Reauthentication required.`
+        `Refresh token expired for account ${account.username}. Reauthentication required.`
       );
-      await db.twitterAccount.update({
-        where: { id: accountId },
-        data: { status: TweetAccountStatus.PAUSED },
-      });
+
       throw new Error("Refresh token expired. User reauthentication required.");
     }
 
