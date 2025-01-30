@@ -63,7 +63,7 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
      * This job is scheduled to run after the refresh-access-token job.
      */
 
-    schedule: "*/5 * * * *",
+    schedule: "0 0 * * *",
     handler: async () => {
       console.log(`Fetching Twitter data for user ${user.id}...`);
       const twitterAccounts = await db.twitterAccount.findMany({
