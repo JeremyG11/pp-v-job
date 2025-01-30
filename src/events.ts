@@ -13,4 +13,5 @@ eventEmitter.on(
     await fetchUserTimeline(twitterAccountId);
   }
 );
+
 export { eventEmitter };
