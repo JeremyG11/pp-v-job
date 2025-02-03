@@ -1,16 +1,53 @@
 import { db } from "../lib/db";
 import logger from "@/lib/logger";
 import { TwitterApi } from "twitter-api-v2";
-import { TweetAccountStatus } from "@prisma/client";
+import { TweetAccountStatus, TwitterAccount } from "@prisma/client";
 import { ensureValidAccessToken } from "@/lib/ensure-valid-token";
 
-export const fetchDMs = async () => {
+/**
+ * Utility function to introduce delay
+ */
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Utility function to handle rate limits
+ */
+const fetchWithRetry = async <T>(
+  apiCall: () => Promise<T>,
+  retries = 3,
+  delayMs = 60 * 1000
+): Promise<T> => {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      return await apiCall();
+    } catch (error: any) {
+      if (error.code === 429 && attempt < retries - 1) {
+        const resetTime =
+          error.headers?.["x-rate-limit-reset"] ||
+          Math.ceil(Date.now() / 1000) + 60;
+        const waitTime = Math.max(resetTime * 1000 - Date.now(), delayMs);
+        logger.warn(
+          `Rate limit hit. Retrying in ${waitTime / 1000} seconds...`
+        );
+        await delay(waitTime);
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw new Error("Exceeded retry attempts due to rate limits.");
+};
+
+/**
+ * Fetch Direct Messages for all active Twitter accounts
+ */
+export const fetchDMs = async (): Promise<void> => {
   try {
-    const twitterAccounts = await db.twitterAccount.findMany({
+    const twitterAccounts: TwitterAccount[] = await db.twitterAccount.findMany({
       where: { status: TweetAccountStatus.ACTIVE },
     });
 
-    if (!twitterAccounts.length) {
+    if (twitterAccounts.length === 0) {
       logger.info("No active Twitter accounts found.");
       return;
     }
@@ -26,19 +63,20 @@ export const fetchDMs = async () => {
       }
 
       const accessToken = await ensureValidAccessToken(account.id);
-
       const twitterClient = new TwitterApi(accessToken);
       const roClient = twitterClient.readOnly;
 
-      let nextToken: string | undefined = undefined;
+      let nextToken: string | undefined;
+      let response;
 
       try {
         do {
-          const response = await roClient.v2.listDmEvents({
-            pagination_token: nextToken,
-          });
-
-          logger.info(JSON.stringify(response));
+          response = await fetchWithRetry(() => roClient.v2.listDmEvents());
+          logger.info(
+            `Fetched ${response.data?.data.length || 0} DMs for account: ${
+              account.username
+            }`
+          );
 
           const dms = response.data.data || [];
           if (dms.length === 0 && !nextToken) {
@@ -46,85 +84,93 @@ export const fetchDMs = async () => {
             break;
           }
 
-          const dmsToUpsert = dms.map((dm) => {
-            const createdAt = new Date(dm.created_at);
-            if (isNaN(createdAt.getTime())) {
-              logger.error(`Invalid date for DM ID: ${dm.id}`);
-              return null;
+          const dmsToUpsert = dms.filter(
+            (dm) => dm.event_type === "MessageCreate"
+          );
+
+          const senderIds: string[] = [
+            ...new Set(
+              dmsToUpsert
+                .map((dm) => dm.participant_ids?.[0])
+                .filter(Boolean) as string[]
+            ),
+          ];
+
+          let userMap: Record<string, any> = {};
+
+          if (senderIds.length > 0) {
+            try {
+              const userResponse = await fetchWithRetry(() =>
+                roClient.v2.users(senderIds, {
+                  "user.fields": ["name", "username", "profile_image_url"],
+                })
+              );
+
+              if (userResponse.data) {
+                userMap = Object.fromEntries(
+                  userResponse.data.map((user) => [user.id, user])
+                );
+              }
+            } catch (error) {
+              logger.warn("Failed to fetch sender details in batch:", error);
             }
+          }
+
+          const dmUpserts = dmsToUpsert.map((dm) => {
+            const createdAt = dm.created_at
+              ? new Date(dm.created_at)
+              : new Date();
+            if (isNaN(createdAt.getTime())) {
+              logger.error(
+                `Invalid date for DM ID: ${dm.id}. Using current time instead.`
+              );
+            }
+
+            const senderId = dm.participant_ids?.[0] || "";
+            const userInfo = userMap[senderId] || {
+              id: senderId,
+              name: "Unknown",
+              username: "unknown_user",
+              profile_image_url: "",
+            };
 
             return {
               where: { messageId: dm.id },
-              update: {
-                senderId: dm.sender_id,
-              },
+              update: { senderId },
               create: {
-                twitterAccountId: twitterAccountId,
+                twitterAccount: { connect: { id: twitterAccountId } },
                 messageId: dm.id,
-                senderId: dm.participant_ids?.[0] || null,
-                recipientId: dm.participant_ids?.[1] || null,
-                text: "text" in dm ? dm.text : "",
+                senderId,
+                recipientId: dm.participant_ids?.[1] || "",
+                text: dm.text || "",
                 createdAt,
+                authorId: senderId,
+                authorName: userInfo.name,
+                authorUsername: userInfo.username,
+                authorProfileImageUrl: userInfo.profile_image_url || "",
               },
             };
           });
 
-          const validDmsToUpsert = dmsToUpsert.filter(Boolean);
-
-          // Perform batch upserts
-          for (const dm of validDmsToUpsert) {
+          // 🔹 Step 4: Batch upsert DMs to database
+          for (const dm of dmUpserts) {
             await db.directMessage.upsert(dm);
           }
 
           logger.info(
-            `Processed ${validDmsToUpsert.length} DMs for account ID: ${twitterAccountId}`
+            `Processed ${dmUpserts.length} DMs for account ID: ${account.id}`
           );
 
-          nextToken = response.meta?.next_token;
-        } while (nextToken);
-
-        logger.info(
-          `Finished processing DMs for account ID: ${twitterAccountId}`
-        );
+          await delay(5000);
+        } while ((nextToken = response.meta?.next_token));
       } catch (error) {
-        handleTwitterApiError(
-          error,
-          `Fetching DMs for account ID: ${twitterAccountId}`
+        logger.error(
+          `Failed to fetch DMs for account: ${account.username}`,
+          error
         );
       }
     }
   } catch (error) {
-    handleTwitterApiError(error, "Fetching DMs globally");
-  }
-};
-
-/**
- * Handles errors from Twitter API and logs them.
- * @param error Error object
- * @param context Context of the error
- */
-const handleTwitterApiError = (error: any, context: string) => {
-  const errorCode = error?.code;
-
-  switch (errorCode) {
-    case 403:
-      logger.error(
-        `${context}: Access forbidden. Ensure the access token has the required permissions.`
-      );
-      break;
-    case 400:
-      logger.error(
-        `${context}: Invalid request. Check the parameters and try again.`
-      );
-      break;
-    case 429:
-      logger.error(`${context}: Rate limit reached. Please try again later.`);
-      break;
-    case 503:
-      logger.error(`${context}: Service unavailable. Please try again later.`);
-      break;
-    default:
-      logger.error(`${context}: An unexpected error occurred.`, error);
-      break;
+    logger.error("Failed to fetch DMs:", error);
   }
 };

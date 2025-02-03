@@ -73,6 +73,7 @@ model PainPoint {
   imageUrl                String?
   keywords                String[]
   siteKeywords            String? 
+  referredAs              String?
 
   twitterAccountId        String    @unique
   twitterAccount          TwitterAccount @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
@@ -304,15 +305,19 @@ model Mention {
 model DirectMessage {
   id               String      @id @default(uuid())
   twitterAccountId String
+  
   messageId        String   @unique
   senderId         String
   recipientId      String
+
   text             String
   authorId         String
   authorName       String
   authorUsername   String
   authorProfileImageUrl String
+  
   createdAt        DateTime @default(now())
+
   twitterAccount   TwitterAccount @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
 }
 model QuoteTweet {

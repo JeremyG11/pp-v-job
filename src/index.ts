@@ -4,6 +4,7 @@ import express, { Application } from "express";
 import { scheduleJobs } from "./scheduler";
 import webhookRouter from "./routes/webhook";
 import analyzeRouter from "./routes/analyze";
+import tweetRouter from "./routes/tweet";
 
 const port = process.env.PORT || 3000;
 const app: Application = express();
@@ -17,6 +18,7 @@ app.use(express.json());
 scheduleJobs();
 app.use("/api/v1/webhooks", webhookRouter);
 app.use("/api/v1/analyze", analyzeRouter);
+app.use("/api/v1/tweets", tweetRouter);
 
 app.listen(port, () => {
   console.log(`Server is running on port ${port}`);

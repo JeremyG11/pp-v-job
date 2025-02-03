@@ -1,14 +1,29 @@
 import OpenAI from "openai";
 import { db } from "@/lib/db";
-import { EngagementType } from "@prisma/client";
 import { assistantMapping } from "@/config/env";
-import { enumEngagementTypeMapping } from "@/config/constant";
+import { EngagementType, Tweet } from "@prisma/client";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-async function processTweetWithAI(
+function cosineSimilarity(vecA: number[], vecB: number[]): number {
+  const dotProduct = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
+  const magA = Math.sqrt(vecA.reduce((sum, a) => sum + a ** 2, 0));
+  const magB = Math.sqrt(vecB.reduce((sum, b) => sum + b ** 2, 0));
+
+  return magA === 0 || magB === 0 ? 0 : dotProduct / (magA * magB);
+}
+
+async function getEmbeddings(text: string): Promise<number[]> {
+  const response = await openai.embeddings.create({
+    input: text,
+    model: "text-embedding-3-small",
+  });
+  return response.data[0].embedding;
+}
+
+export async function processTweetWithAI(
   tweetText: string,
   engagementType: string,
   appName: string
@@ -32,9 +47,9 @@ async function processTweetWithAI(
       
       Engagement Type: ${normalizedEngagementType}
       Tweet: "${tweetText}"
-      app's name: "${appName}"
+       business profile: "${appName}"
 
-      Please provide **five unique responses**, **mention ${appName} in hashtag when neccessary**, each formatted as follows:
+      Please provide **five unique responses**, **mention ${appName} when neccessary**, each formatted as follows:
 
       1. [Response Type]: [Response Text]
       2. [Response Type]: [Response Text]
@@ -90,33 +105,6 @@ async function fetchAppPainpoint(accountId: string) {
   return appPainpoint;
 }
 
-function parseGeneratedResponse(generatedResponse: string) {
-  const match = generatedResponse.match(/^\d+\. \[(.+?)\]: (.+)$/);
-  if (match) {
-    return { responseType: match[1].trim(), responseText: match[2].trim() };
-  }
-
-  // Try another format if the first one fails
-  const alternativeMatch = generatedResponse.match(/^1\. \[(.+?)\]: (.+)$/);
-  if (alternativeMatch) {
-    return {
-      responseType: alternativeMatch[1].trim(),
-      responseText: alternativeMatch[2].trim(),
-    };
-  }
-
-  // Try another format if the second one fails
-  const anotherAlternativeMatch = generatedResponse.match(/^1\. (.+?): (.+)$/);
-  if (anotherAlternativeMatch) {
-    return {
-      responseType: anotherAlternativeMatch[1].trim(),
-      responseText: anotherAlternativeMatch[2].trim(),
-    };
-  }
-
-  return null;
-}
-
 export async function generateResponseForTweet(
   tweetId: string,
   tweetText: string,
@@ -132,7 +120,6 @@ export async function generateResponseForTweet(
       painPoint.name
     );
 
-    console.log("AI response:", aiResponse);
     const responsesArray = aiResponse
       .split("\n")
       .map((line) => {
@@ -152,17 +139,17 @@ export async function generateResponseForTweet(
 
     const response = await db.$transaction(
       responsesArray.map(({ responseText, responseType }) =>
-        db.generatedTweetResponse.create({
-          data: {
+        db.generatedTweetResponse.createMany({
+          data: responsesArray.map(({ responseText, responseType }) => ({
             tweetId,
             response: responseText,
-            engagementType:
-              enumEngagementTypeMapping[engagementType.toLowerCase()],
             responseType,
-          },
+            engagementType: engagementType as EngagementType,
+          })),
         })
       )
     );
+
     return response;
   } catch (error) {
     console.log(`Error generating response for tweet ${tweetId}:`, error);
@@ -183,24 +170,46 @@ async function fetchLatestTweets(twitterAccountId: string) {
   });
 }
 
-function getTopTweets(tweets: any[]) {
-  tweets.sort((a, b) => {
-    const aImpressions =
-      a.impressionCount +
-      a.likeCount +
-      a.retweetCount +
-      a.replyCount +
-      a.quoteCount;
+async function getTopTweets(tweets: Tweet[], appDescription: string) {
+  if (tweets.length === 0) return [];
 
-    const bImpressions =
-      b.impressionCount +
-      b.likeCount +
-      b.retweetCount +
-      b.replyCount +
-      b.quoteCount;
-    return bImpressions - aImpressions;
-  });
-  return tweets.slice(0, 10);
+  try {
+    // Get embeddings for app description and tweets
+    const appDescriptionEmbedding = await getEmbeddings(appDescription);
+    const tweetEmbeddings = await Promise.all(
+      tweets.map((tweet) => getEmbeddings(tweet.text))
+    );
+
+    // Calculate relevance scores
+    const rankedTweets = await Promise.all(
+      tweets.map(async (tweet, i) => {
+        const cosine = cosineSimilarity(
+          appDescriptionEmbedding,
+          tweetEmbeddings[i]
+        );
+        const jaccard = jaccardSimilarity(appDescription, tweet.text);
+        const oocPenalty = await calculateOOCPenalty(
+          tweet.text,
+          appDescription
+        );
+
+        const relevanceScore =
+          0.85 * cosine + 0.05 * jaccard - 0.1 * oocPenalty;
+        return {
+          ...tweet,
+          relevanceScore,
+        };
+      })
+    );
+
+    // Sort and return top 10 tweets
+    return rankedTweets
+      .sort((a, b) => b.relevanceScore - a.relevanceScore)
+      .slice(0, 10);
+  } catch (error) {
+    console.error("Error ranking tweets:", error);
+    return [];
+  }
 }
 
 export async function generateResponsesForTopTweets(userId: string) {
@@ -225,8 +234,12 @@ export async function generateResponsesForTopTweets(userId: string) {
     ];
 
     for (const account of twitterAccounts) {
+      const painPoint = await fetchAppPainpoint(account.id);
       const latestTweets = await fetchLatestTweets(account.id);
-      const bestTweets = getTopTweets(latestTweets);
+      const bestTweets = await getTopTweets(
+        latestTweets,
+        painPoint.siteSummary
+      );
 
       for (let i = 0; i < bestTweets.length; i++) {
         const tweet = bestTweets[i];
@@ -262,4 +275,51 @@ export async function generateResponsesForTopTweets(userId: string) {
   } catch (err) {
     console.log("Error in cron job:", err);
   }
+}
+
+async function calculateOOCPenalty(
+  text: string,
+  appDescription: string
+): Promise<number> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are a text analysis assistant. Your task is to identify words or phrases in the input text that are unrelated to the following app/business description: "${appDescription}". Return a score between 0 and 1, where 0 means no out-of-context words and 1 means all words are out-of-context.
+
+Examples:
+1. App Description: "A social media management tool for businesses."
+   Input: "I love pizza and social media marketing."
+   Output: 0.5 (50% of words are out-of-context)
+
+2. App Description: "An analytics platform for e-commerce businesses."
+   Input: "The weather is nice, and our sales are growing."
+   Output: 0.3 (30% of words are out-of-context)
+
+3. App Description: "A project management tool for remote teams."
+   Input: "Let's grab coffee and discuss our project deadlines."
+   Output: 0.2 (20% of words are out-of-context)
+
+Now, process the following text: "${text}"`,
+        },
+      ],
+      max_tokens: 10, // Limit response to just the score
+    });
+
+    // Extract the score from the AI's response
+    const score = parseFloat(response.choices[0].message.content);
+    return isNaN(score) ? 0 : score; // Default to 0 if parsing fails
+  } catch (error) {
+    console.error("Failed to calculate OOC penalty:", error);
+    return 0; // Default to 0 if the API call fails
+  }
+}
+
+function jaccardSimilarity(textA: string, textB: string): number {
+  const setA = new Set(textA.toLowerCase().split(" "));
+  const setB = new Set(textB.toLowerCase().split(" "));
+  const intersection = new Set([...setA].filter((x) => setB.has(x)));
+  return intersection.size / (setA.size + setB.size - intersection.size);
 }

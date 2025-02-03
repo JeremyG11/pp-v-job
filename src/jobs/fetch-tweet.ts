@@ -36,7 +36,7 @@ export const fetchTweetsForAccount = async (accountId: string) => {
       // Fetch 10 tweets per keyword
       const MAX_RESULTS_PER_KEYWORD = 10;
 
-      const query = `${keyword} lang:en`;
+      const query = `${keyword} -is:retweet lang:en`;
       // Fetch tweets for the keyword
       const apiResponse = await roClient.v2.search(query, {
         "tweet.fields":

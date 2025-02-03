@@ -66,10 +66,7 @@ const processAccountAnalytics = async (account: TwitterAccount) => {
       start_time: startDate.toISOString(),
     });
 
-    console.log(
-      `[🔍 INFO] Fetched`,
-      JSON.stringify(tweets?.data || {}, null, 2)
-    );
+    console.log(`[🔍 INFO] Fetched`, JSON.stringify(tweets || {}, null, 2));
 
     let viralTweetCount = 0;
     const VIRAL_THRESHOLD = 100;

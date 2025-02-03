@@ -1,7 +1,6 @@
 import { Job } from "@/types";
 import { db } from "@/lib/db";
 import { fetchDMs } from "./fetchDMs";
-import { fetchQuoteTweets } from "./fetchQuotes";
 import { fetchMentions } from "./fetch-mentions";
 import { fetchUserTimeline } from "./fetchUserTimeline";
 import { fetchTweetsForAccounts } from "./fetch-tweet";
@@ -39,21 +38,6 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
     },
     timezone: userTimezone,
   },
-  {
-    id: `fetch-quote-tweets-${user.id}`,
-    /**
-     * Fetch quote tweets every day at 12:10 AM.
-     * This is a cron expression that runs at 12:10 AM every day.
-     * This job is scheduled to run after the fetch-tweets job.
-     */
-    schedule: "10 0 * * *",
-    handler: async () => {
-      console.log(`Fetching quote tweets for user ${user.id}...`);
-      await fetchQuoteTweets();
-      console.log(`Completed fetching quote tweets for user ${user.id}.`);
-    },
-    timezone: userTimezone,
-  },
 
   {
     id: `fetch-usertimeline-data-${user.id}`,
@@ -63,7 +47,7 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
      * This job is scheduled to run after the refresh-access-token job.
      */
 
-    schedule: "0 */1 * * *",
+    schedule: "0 0 * * *",
     handler: async () => {
       console.log(`Fetching Twitter data for user ${user.id}...`);
       const twitterAccounts = await db.twitterAccount.findMany({
@@ -83,9 +67,9 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
      * This is a cron expression that runs at 12:20 AM every day.
      * This job is scheduled to run after the fetch-twitter-data job.
      */
-    schedule: "0 0 * * *",
+    schedule: "*/30 * * * *",
     handler: async () => {
-      await fetchDMs();
+      // await fetchDMs();
     },
     timezone: userTimezone,
   },
