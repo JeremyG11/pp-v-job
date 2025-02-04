@@ -8,9 +8,15 @@ const eventEmitter = new EventEmitter();
 eventEmitter.on(
   "twitterAccountLinking",
   async ({ twitterAccountId, userId }) => {
-    await fetchTweetsForAccount(twitterAccountId);
-    await generateResponsesForTopTweets(userId);
-    await fetchUserTimeline(twitterAccountId);
+    try {
+      await fetchTweetsForAccount(twitterAccountId);
+
+      await generateResponsesForTopTweets(userId);
+
+      await fetchUserTimeline(twitterAccountId);
+    } catch (error) {
+      console.error("Error handling twitterAccountLinking event:", error);
+    }
   }
 );
 
