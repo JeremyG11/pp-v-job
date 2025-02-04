@@ -73,7 +73,6 @@ model PainPoint {
   imageUrl                String?
   keywords                String[]
   siteKeywords            String? 
-  referredAs              String?
 
   twitterAccountId        String    @unique
   twitterAccount          TwitterAccount @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
@@ -121,6 +120,7 @@ model TwitterAccount {
   followers           Follower[]
   followerHistories   FollowerHistory[]
   engagements         Engagement[]
+  KeywordNotFound     KeywordNotFound[]
 
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -393,3 +393,14 @@ model Engagement {
   @@index([tweetId])
 }
 
+
+model KeywordNotFound {
+  id                  String   @id @default(uuid())
+  twitterAccountId    String   
+  keyword             String   
+  createdAt           DateTime @default(now())
+  twitterAccount      TwitterAccount     @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
+
+  @@index([twitterAccountId, keyword])
+
+  }

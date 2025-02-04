@@ -50,7 +50,12 @@ export const fetchTweetsForAccount = async (accountId: string) => {
 
       const tweets = apiResponse.data?.data;
       if (!tweets?.length) {
-        console.log(`No tweets found for keyword: "${keyword}"`);
+        console.log(`No tweets found for keyword: ${keyword}`);
+        await db.keywordNotFound.upsert({
+          where: { id: `${account.id}-${keyword}` },
+          update: {},
+          create: { keyword, twitterAccount: { connect: { id: account.id } } },
+        });
         continue;
       }
 
