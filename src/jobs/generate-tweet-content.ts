@@ -23,10 +23,14 @@ async function getEmbeddings(text: string): Promise<number[]> {
   return response.data[0].embedding;
 }
 
-export async function processTweetWithAI(
+/**
+ * @param tweetText  The text of the tweet
+ * @param engagementType  The type of engagement
+ * @returns  The response from the AI assistant
+ */ async function processTweetWithAI(
   tweetText: string,
   engagementType: string,
-  appName: string
+  BusinessName: string
 ): Promise<string> {
   try {
     const normalizedEngagementType = engagementType.toLowerCase();
@@ -47,15 +51,16 @@ export async function processTweetWithAI(
       
       Engagement Type: ${normalizedEngagementType}
       Tweet: "${tweetText}"
-       business profile: "${appName}"
+      Business Name: "${BusinessName}"
 
-      Please provide **five unique responses**, **mention ${appName} when neccessary**, each formatted as follows:
+      Please provide **five unique responses**, **mention #${BusinessName} when neccessary as mean of promotion **, each formatted as follows:
 
       1. [Response Type]: [Response Text]
       2. [Response Type]: [Response Text]
       3. [Response Type]: [Response Text]
       4. [Response Type]: [Response Text]
       5. [Response Type]: [Response Text]
+
     `;
 
     await openai.beta.threads.messages.create(thread.id, {
@@ -137,18 +142,14 @@ export async function generateResponseForTweet(
       })
       .filter(Boolean) as { responseType: string; responseText: string }[];
 
-    const response = await db.$transaction(
-      responsesArray.map(({ responseText, responseType }) =>
-        db.generatedTweetResponse.createMany({
-          data: responsesArray.map(({ responseText, responseType }) => ({
-            tweetId,
-            response: responseText,
-            responseType,
-            engagementType: engagementType as EngagementType,
-          })),
-        })
-      )
-    );
+    const response = await db.generatedTweetResponse.createMany({
+      data: responsesArray.map(({ responseText, responseType }) => ({
+        tweetId,
+        response: responseText,
+        responseType,
+        engagementType: engagementType as EngagementType,
+      })),
+    });
 
     return response;
   } catch (error) {
@@ -207,7 +208,7 @@ async function getTopTweets(tweets: Tweet[], appDescription: string) {
       .sort((a, b) => b.relevanceScore - a.relevanceScore)
       .slice(0, 10);
   } catch (error) {
-    console.error("Error ranking tweets:", error);
+    console.log("Error ranking tweets:", error);
     return [];
   }
 }
@@ -289,31 +290,30 @@ async function calculateOOCPenalty(
           role: "system",
           content: `You are a text analysis assistant. Your task is to identify words or phrases in the input text that are unrelated to the following app/business description: "${appDescription}". Return a score between 0 and 1, where 0 means no out-of-context words and 1 means all words are out-of-context.
 
-Examples:
-1. App Description: "A social media management tool for businesses."
-   Input: "I love pizza and social media marketing."
-   Output: 0.5 (50% of words are out-of-context)
+        Examples:
+        1. App/business Description: "A social media management tool for businesses."
+          Input: "I love pizza and social media marketing."
+          Output: 0.5 (50% of words are out-of-context)
 
-2. App Description: "An analytics platform for e-commerce businesses."
-   Input: "The weather is nice, and our sales are growing."
-   Output: 0.3 (30% of words are out-of-context)
+        2. App/business Description: "An analytics platform for e-commerce businesses."
+          Input: "The weather is nice, and our sales are growing."
+          Output: 0.3 (30% of words are out-of-context)
 
-3. App Description: "A project management tool for remote teams."
-   Input: "Let's grab coffee and discuss our project deadlines."
-   Output: 0.2 (20% of words are out-of-context)
+        3. App/business Description: "A project management tool for remote teams."
+          Input: "Let's grab coffee and discuss our project deadlines."
+          Output: 0.2 (20% of words are out-of-context)
 
-Now, process the following text: "${text}"`,
+        Now, process the following text: "${text}"`,
         },
       ],
-      max_tokens: 10, // Limit response to just the score
+      max_tokens: 10,
     });
 
-    // Extract the score from the AI's response
     const score = parseFloat(response.choices[0].message.content);
-    return isNaN(score) ? 0 : score; // Default to 0 if parsing fails
+    return isNaN(score) ? 0 : score;
   } catch (error) {
     console.error("Failed to calculate OOC penalty:", error);
-    return 0; // Default to 0 if the API call fails
+    return 0;
   }
 }
 

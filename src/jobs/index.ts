@@ -31,7 +31,7 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
      * This is a cron expression that runs at 12:05 AM every day.
      * This job is scheduled to run after the fetch-mentions job.
      */
-    schedule: "5 0 * * *",
+    schedule: "0 5 * * *", 
     handler: async () => {
       await fetchTweetsForAccounts(user.id);
       await generateResponsesForTopTweets(user.id);
@@ -47,7 +47,7 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
      * This job is scheduled to run after the refresh-access-token job.
      */
 
-    schedule: "0 0 * * *",
+    schedule: "*/30 * * * *",
     handler: async () => {
       console.log(`Fetching Twitter data for user ${user.id}...`);
       const twitterAccounts = await db.twitterAccount.findMany({
