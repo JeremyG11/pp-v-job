@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { db } from "@/lib/db";
 import { Request, Response } from "express";
 import { assistantMapping } from "@/config/env";
+import { EngagementType } from "@prisma/client";
 
 // OpenAI client
 const openai = new OpenAI({
@@ -14,7 +15,7 @@ const openai = new OpenAI({
  * @returns  The response from the AI assistant
  */ async function processTweetWithAI(
   tweetText: string,
-  engagementType: string,
+  engagementType: EngagementType,
   BusinessName: string
 ): Promise<string> {
   try {

@@ -29,7 +29,7 @@ async function getEmbeddings(text: string): Promise<number[]> {
  * @returns  The response from the AI assistant
  */ async function processTweetWithAI(
   tweetText: string,
-  engagementType: string,
+  engagementType: EngagementType,
   BusinessName: string
 ): Promise<string> {
   try {
@@ -113,7 +113,7 @@ async function fetchAppPainpoint(accountId: string) {
 export async function generateResponseForTweet(
   tweetId: string,
   tweetText: string,
-  engagementType: string,
+  engagementType: EngagementType,
   accountId: string
 ) {
   try {
@@ -121,7 +121,7 @@ export async function generateResponseForTweet(
 
     const aiResponse = await processTweetWithAI(
       tweetText,
-      engagementType.toLowerCase(),
+      engagementType,
       painPoint.name
     );
 
@@ -170,7 +170,6 @@ async function fetchLatestTweets(twitterAccountId: string) {
     take: 50,
   });
 }
-
 async function getTopTweets(tweets: Tweet[], appDescription: string) {
   if (tweets.length === 0) return [];
 
@@ -184,18 +183,24 @@ async function getTopTweets(tweets: Tweet[], appDescription: string) {
     // Calculate relevance scores
     const rankedTweets = await Promise.all(
       tweets.map(async (tweet, i) => {
-        const cosine = cosineSimilarity(
-          appDescriptionEmbedding,
-          tweetEmbeddings[i]
-        );
-        const jaccard = jaccardSimilarity(appDescription, tweet.text);
-        const oocPenalty = await calculateOOCPenalty(
-          tweet.text,
-          appDescription
-        );
+        if (!appDescriptionEmbedding || !tweetEmbeddings[i]) {
+          console.warn(`Invalid embeddings for tweet ${tweet.id}`);
+          return { ...tweet, relevanceScore: 0 };
+        }
+
+        const cosine =
+          cosineSimilarity(appDescriptionEmbedding, tweetEmbeddings[i]) || 0;
+        const jaccard = jaccardSimilarity(appDescription, tweet.text) || 0;
+        const oocPenalty =
+          (await calculateOOCPenalty(tweet.text, appDescription)) || 0;
 
         const relevanceScore =
           0.85 * cosine + 0.05 * jaccard - 0.1 * oocPenalty;
+
+        console.log(
+          `Tweet ID: ${tweet.id}, Relevance Score: ${relevanceScore}`
+        );
+
         return {
           ...tweet,
           relevanceScore,
@@ -203,13 +208,89 @@ async function getTopTweets(tweets: Tweet[], appDescription: string) {
       })
     );
 
+    // Batch update relevance scores in the database
+    const updates = rankedTweets.map((tweet) =>
+      db.tweet.update({
+        where: { id: tweet.id },
+        data: { relevanceScore: tweet.relevanceScore },
+      })
+    );
+
+    await Promise.all(updates);
+
     // Sort and return top 10 tweets
     return rankedTweets
-      .sort((a, b) => b.relevanceScore - a.relevanceScore)
+      .sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
       .slice(0, 10);
   } catch (error) {
-    console.log("Error ranking tweets:", error);
+    console.error("Error ranking tweets:", error);
     return [];
+  }
+}
+
+async function recommendEngagementType(
+  tweetText: string,
+  businessDescription: string
+): Promise<EngagementType> {
+  try {
+    const thread = await openai.beta.threads.create();
+
+    const prompt = `
+      Analyze the following tweet and business description, and recommend the best engagement type. Choose from: AUTHORITY, EMPATHY, SOLUTION, HUMOR, QUESTION, CONTRARIAN, TREND, WHAT_IF.
+
+      Tweet: "${tweetText}"
+      Business Description: "${businessDescription}"
+
+      Consider the following:
+      - The tweet's sentiment and intent.
+      - The business's goals and target audience.
+      - The most effective way to engage with the tweet.
+
+      Respond with ONLY the engagement type provided (e.g., "HUMOR").
+    `;
+
+    // Add the user message to the thread
+    await openai.beta.threads.messages.create(thread.id, {
+      role: "user",
+      content: prompt,
+    });
+
+    // Run the assistant
+    const run = await openai.beta.threads.runs.create(thread.id, {
+      assistant_id: assistantMapping["ai_recommended"],
+    });
+
+    let runStatus;
+    do {
+      runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
+      await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second before checking again
+    } while (runStatus.status !== "completed");
+
+    // Fetch the assistant's response
+    const messages = await openai.beta.threads.messages.list(thread.id);
+    const assistantResponse = messages.data[0]?.content[0];
+
+    const recommendedType =
+      "text" in assistantResponse
+        ? assistantResponse.text.value.trim()
+        : EngagementType.SOLUTION;
+
+    console.log("Assistant Response:", recommendedType);
+
+    if (!(recommendedType in EngagementType)) {
+      console.warn(
+        `Invalid engagement type: "${recommendedType}". Defaulting to SOLUTION.`
+      );
+      return EngagementType.SOLUTION;
+    }
+
+    return recommendedType as EngagementType;
+  } catch (error: any) {
+    console.error(
+      "Error recommending engagement type:",
+      error.response ?? error
+    );
+    return EngagementType.SOLUTION;
   }
 }
 
@@ -223,16 +304,6 @@ export async function generateResponsesForTopTweets(userId: string) {
       console.log("No active Twitter accounts found.");
       return;
     }
-    const engagementTypes = [
-      EngagementType.AUTHORITY,
-      EngagementType.EMPATHY,
-      EngagementType.SOLUTION,
-      EngagementType.HUMOR,
-      EngagementType.QUESTION,
-      EngagementType.CONTRARIAN,
-      EngagementType.TREND,
-      EngagementType.WHAT_IF,
-    ];
 
     for (const account of twitterAccounts) {
       const painPoint = await fetchAppPainpoint(account.id);
@@ -244,7 +315,12 @@ export async function generateResponsesForTopTweets(userId: string) {
 
       for (let i = 0; i < bestTweets.length; i++) {
         const tweet = bestTweets[i];
-        const engagementType = engagementTypes[i % engagementTypes.length];
+
+        // Use AI to recommend the best engagement type for this tweet
+        const engagementType = await recommendEngagementType(
+          tweet.text,
+          painPoint.siteSummary
+        );
 
         const {
           id: tweetId,

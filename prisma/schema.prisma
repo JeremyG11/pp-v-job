@@ -21,6 +21,20 @@ enum TweetAccountStatus {
   ARCHIVED
 }
 
+enum EngagementType {
+  AGREEABLENESS_AGREE
+  AGREEABLENESS_DISAGREE
+  AUTHORITY
+  EMPATHY
+  SOLUTION
+  HUMOR
+  QUESTION
+  CONTRARIAN
+  TREND
+  WHAT_IF
+  AI_RECOMMENDED 
+}
+
 model User {
   id                          String    @id @default(uuid())
   name                        String?
@@ -206,6 +220,7 @@ model Tweet {
   replyCount            Int
   quoteCount            Int
   impressionCount       Int
+  relevanceScore        Float?
 
   timestamp            String
   media                Media[]
@@ -262,26 +277,6 @@ model GeneratedTweetResponse {
   @@index([tweetId])
 }
 
-enum Agreeableness {
-  STRONGLY_AGREE
-  AGREE
-  NEUTRAL
-  DISAGREE
-  STRONGLY_DISAGREE
-}
-
-enum EngagementType {
-  AGREEABLENESS_AGREE
-  AGREEABLENESS_DISAGREE
-  AUTHORITY
-  EMPATHY
-  SOLUTION
-  HUMOR
-  QUESTION
-  CONTRARIAN
-  TREND
-  WHAT_IF
-}
 
 
 model Mention {

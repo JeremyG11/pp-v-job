@@ -11,4 +11,5 @@ export const assistantMapping: Record<string, string> = {
   contrarian: process.env.NEXT_PUBLIC_ASSISTANT_CONTRARIAN!,
   trend: process.env.NEXT_PUBLIC_ASSISTANT_TREND!,
   what_if: process.env.NEXT_PUBLIC_ASSISTANT_WHAT_IF!,
+  ai_recommended: process.env.NEXT_PUBLIC_ASSISTANT_AI_RECOMMENDED!,
 };
