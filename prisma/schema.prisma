@@ -81,24 +81,29 @@ model Account {
 }
  
 model PainPoint {
-  id                      String    @id @default(uuid())
-  name                    String    
-  description             String    @db.Text
-  imageUrl                String?
-  keywords                String[]
-  siteKeywords            String? 
+  id                String    @id @default(uuid())
+  name              String
+  description       String    @db.Text
+  imageUrl          String?
+  keywords          String[]
+  siteKeywords      String?
 
-  twitterAccountId        String    @unique
-  twitterAccount          TwitterAccount @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
-  
-  siteSummary             String?
-  title                   String?
-  metaDescription         String?
-  headings                String?
+  twitterAccountId  String    @unique
+  twitterAccount    TwitterAccount @relation(fields: [twitterAccountId], references: [id], onDelete: Cascade)
 
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  siteSummary       String?
+  title             String?
+  metaDescription   String?
+  headings          String?
+
+  businessType      String?  
+  businessRole      String?   
+  brandingKeywords String[]   
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
+
 
 model TwitterAccount {
   id                  String    @id @default(uuid())

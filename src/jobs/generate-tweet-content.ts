@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { db } from "@/lib/db";
 import { assistantMapping } from "@/config/env";
-import { EngagementType, Tweet } from "@prisma/client";
+import { EngagementType, PainPoint, Tweet } from "@prisma/client";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -30,7 +30,7 @@ async function getEmbeddings(text: string): Promise<number[]> {
  */ async function processTweetWithAI(
   tweetText: string,
   engagementType: EngagementType,
-  BusinessName: string
+  business: PainPoint
 ): Promise<string> {
   try {
     const normalizedEngagementType = engagementType.toLowerCase();
@@ -45,24 +45,71 @@ async function getEmbeddings(text: string): Promise<number[]> {
     // Create a thread
     const thread = await openai.beta.threads.create();
 
-    // Prepare prompt to instruct AI to generate 5 responses
+    const {
+      name,
+      businessType,
+      businessRole,
+      siteSummary,
+      brandingKeywords,
+      keywords,
+    } = business;
     const prompt = `
-      **five diverse responses** based on the following engagement type:
-      
-      Engagement Type: ${normalizedEngagementType}
-      Tweet: "${tweetText}"
-      Business Name: "${BusinessName}"
+      **ROLE**: You are a brand-safe Twitter engagement assistant for ${name}. 
+      that speaks like a practical and engaging social media manager. You craft concise and actionable responses that highlight solutions while naturally promoting an app or service.
+      Your responses MUST ALWAYS follow these rules:
 
-      Please provide **five unique responses**, **mention #${BusinessName} when neccessary as mean of promotion **, each formatted as follows:
+      **CORE RULES** (ABSOLUTE REQUIREMENTS):
+      1. NEVER claim association/ownership of other brands/technologies
+      2. ONLY mention ${name} when contextually relevant
+      3. USE HASHTAGS SPARINGLY: #${name} only when natural
+      4. RESPONSE STYLE: ${engagementType}-appropriate tone
+      5. BRAND VOICE: ${brandingKeywords.join(", ")}
+      6. SAFETY: Avoid legal/financial advice claims
+      7. Stay within 280 character limit
+      - Stay within 280 character limit.
+      - Maintain a conversational and helpful tone, making solutions easy to understand and engaging.
+      - Stay on topic: Ensure your responses provide clear, actionable suggestions tied to the app or service being promoted.
+      - Avoid generalizations: Focus on specific solutions or benefits relevant to the audience.
+      - Use strong verbs: Choose verbs that encourage action and make the app/service sound valuable.
+      - Vary your sentence structure: Keep the tone dynamic and natural to hold interest.
+      - Use emojis sparingly: Add personality but only with smileys.
+      - Ask questions: Engage your audience by inviting them to try or share their experiences with your app/service.
+      - Seamlessly connect the app/service to the solution: Promote benefits without sounding pushy.
 
-      1. [Response Type]: [Response Text]
-      2. [Response Type]: [Response Text]
-      3. [Response Type]: [Response Text]
-      4. [Response Type]: [Response Text]
-      5. [Response Type]: [Response Text]
+      **BUSINESS CONTEXT**:
+      - Type: ${businessType}
+      - Specialty: ${siteSummary}
+      - Your Role: ${businessRole}
+      - Target Keywords: ${keywords.join(", ")}
+      - Avoid: Third-party tech/platform mentions
 
+      **TWEET TO RESPOND TO**:
+      "${tweetText}"
+
+      **TASK**: Create 5 distinct response options that:
+      1. Align with ${name}'s services
+      2. Add value to the conversation
+      3. Maintain brand safety
+      4. Match ${engagementType} context
+      5. Encourage further interaction when revelant to ${engagementType}
+      6. Use ${brandingKeywords.join(", ")} when neccessary
+
+      **RESPONSE FORMAT**:
+          1. [Response Type]: [Response Text]
+          2. [Response Type]: [Response Text]
+          3. [Response Type]: [Response Text]
+          4. [Response Type]: [Response Text]
+          5. [Response Type]: [Response Text]
+
+      **BAD EXAMPLE** (NEVER DO THIS):
+      "Love our new AI feature!" ❌ (If not actually theirs)
+
+      **GOOD EXAMPLES**:
+      - "Interesting perspective! At ${name}, we approach similar challenges through ${businessRole}. How do you handle this in your workflow?"
+      - "Great discussion! ${businessType} companies often benefit from ${
+      (brandingKeywords[0], brandingKeywords[1])
+    }. #IndustryInsights"
     `;
-
     await openai.beta.threads.messages.create(thread.id, {
       role: "user",
       content: prompt,
@@ -83,10 +130,8 @@ async function getEmbeddings(text: string): Promise<number[]> {
       await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
-    // Fetch assistant's response
     const messages = await openai.beta.threads.messages.list(thread.id);
 
-    // Extract and return the assistant response
     const messageContent = messages.data[0]?.content[0];
 
     const textContent =
@@ -122,7 +167,7 @@ export async function generateResponseForTweet(
     const aiResponse = await processTweetWithAI(
       tweetText,
       engagementType,
-      painPoint.name
+      painPoint
     );
 
     const responsesArray = aiResponse
@@ -230,16 +275,24 @@ async function getTopTweets(tweets: Tweet[], appDescription: string) {
 
 async function recommendEngagementType(
   tweetText: string,
-  businessDescription: string
+  business: PainPoint
 ): Promise<EngagementType> {
   try {
     const thread = await openai.beta.threads.create();
+
+    const { name, businessType, description, businessRole, keywords } =
+      business;
 
     const prompt = `
       Analyze the following tweet and business description, and recommend the best engagement type. Choose from: AUTHORITY, EMPATHY, SOLUTION, HUMOR, QUESTION, CONTRARIAN, TREND, WHAT_IF.
 
       Tweet: "${tweetText}"
-      Business Description: "${businessDescription}"
+      Business Description: "${description}"
+      Business Name: "${name}"
+      Business Type: "${businessType}"
+      Business Role: "${businessRole}"
+      Keywords: "${keywords}"
+      
 
       Consider the following:
       - The tweet's sentiment and intent.
@@ -263,10 +316,9 @@ async function recommendEngagementType(
     let runStatus;
     do {
       runStatus = await openai.beta.threads.runs.retrieve(thread.id, run.id);
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second before checking again
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     } while (runStatus.status !== "completed");
 
-    // Fetch the assistant's response
     const messages = await openai.beta.threads.messages.list(thread.id);
     const assistantResponse = messages.data[0]?.content[0];
 
@@ -319,7 +371,7 @@ export async function generateResponsesForTopTweets(userId: string) {
         // Use AI to recommend the best engagement type for this tweet
         const engagementType = await recommendEngagementType(
           tweet.text,
-          painPoint.siteSummary
+          painPoint
         );
 
         const {
@@ -398,4 +450,17 @@ function jaccardSimilarity(textA: string, textB: string): number {
   const setB = new Set(textB.toLowerCase().split(" "));
   const intersection = new Set([...setA].filter((x) => setB.has(x)));
   return intersection.size / (setA.size + setB.size - intersection.size);
+}
+
+async function getBusinessContext(twitterAccountId: string) {
+  return await db.painPoint.findUnique({
+    where: { twitterAccountId },
+    select: {
+      name: true,
+      businessType: true,
+      businessRole: true,
+      brandingKeywords: true,
+      keywords: true,
+    },
+  });
 }
