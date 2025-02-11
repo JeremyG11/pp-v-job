@@ -46,21 +46,19 @@ const processAccountAnalytics = async (account: TwitterAccount) => {
     const client = new TwitterApi(accessToken);
     const roClient = client.readOnly;
 
-    /**
-     * Get the user's timeline from last recorded date to today
-     */
+    // Retrieve the most recent analytic data if available
     const accountData = await db.accountAnalyticData.findFirst({
       where: { twitterAccountId: account.id },
     });
 
+    // Determine the start date for fetching tweets
     const startDate = accountData?.lastUpdated
       ? new Date(accountData.lastUpdated)
       : new Date(account.createdAt);
 
     const today = new Date();
-    const todayFormatted = today.toISOString().split("T")[0];
 
-    // Fetch tweets for engagement tracking
+    // Fetch tweets starting from the determined start date
     const tweets = await roClient.v2.userTimeline(account.twitterUserId, {
       "tweet.fields": ["public_metrics", "created_at"],
       start_time: startDate.toISOString(),
@@ -71,32 +69,29 @@ const processAccountAnalytics = async (account: TwitterAccount) => {
     let viralTweetCount = 0;
     const VIRAL_THRESHOLD = 100;
 
+    // Loop over tweets and process engagement metrics
     for (const tweet of tweets?.data?.data || []) {
-      const engagementDate = today;
-
       const { like_count, retweet_count, reply_count } = tweet.public_metrics;
       const totalEngagement = like_count + retweet_count + reply_count;
 
-      // ✅ Save engagement as a separate row in Engagement table
-      await db.engagement.create({
-        data: {
-          twitterAccount: { connect: { id: account.id } },
-          tweetId: tweet.id,
-          engagementDate,
-          likeCount: like_count,
-          retweetCount: retweet_count,
-          replyCount: reply_count,
-          totalEngagement,
-        },
-      });
-
-      // ✅ Count viral tweets
+      // Only create an engagement record if the tweet is considered viral
       if (totalEngagement >= VIRAL_THRESHOLD) {
+        await db.engagement.create({
+          data: {
+            twitterAccount: { connect: { id: account.id } },
+            tweetId: tweet.id,
+            engagementDate: today,
+            likeCount: like_count,
+            retweetCount: retweet_count,
+            replyCount: reply_count,
+            totalEngagement,
+          },
+        });
         viralTweetCount += 1;
       }
     }
 
-    // ✅ Update account analytics
+    // Update (or create) overall account analytics
     await db.accountAnalyticData.upsert({
       where: { twitterAccountId: account.id },
       update: {
