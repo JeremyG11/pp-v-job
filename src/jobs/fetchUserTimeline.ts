@@ -4,11 +4,10 @@ import { ensureValidAccessToken } from "@/lib/ensure-valid-token";
 import { TweetAccountStatus, TwitterAccount } from "@prisma/client";
 
 /**
- *  Fetches the user's timeline data and updates the database with the engagement metrics.
- * @param twitterAccountId  The ID of the Twitter account to fetch data for
- * @returns  A promise that resolves when the data has been fetched
+ * Fetches the user's timeline data and updates the database with the engagement metrics.
+ * @param twitterAccountId - The ID of the Twitter account to fetch data for
+ * @returns A promise that resolves when the data has been fetched
  */
-
 export const fetchUserTimeline = async (twitterAccountId: string) => {
   try {
     const account = await db.twitterAccount.findFirst({
@@ -35,10 +34,9 @@ export const fetchUserTimeline = async (twitterAccountId: string) => {
 };
 
 /**
- * 🔹 Helper function to process account analytics
- *  @param account The Twitter account to process
- *  @returns A promise that resolves when the analytics have been processed
- *
+ * Helper function to process account analytics.
+ *  @param account - The Twitter account to process.
+ *  @returns A promise that resolves when the analytics have been processed.
  */
 const processAccountAnalytics = async (account: TwitterAccount) => {
   try {
@@ -67,31 +65,72 @@ const processAccountAnalytics = async (account: TwitterAccount) => {
     console.log(`[🔍 INFO] Fetched`, JSON.stringify(tweets || {}, null, 2));
 
     let viralTweetCount = 0;
-    const VIRAL_THRESHOLD = 100;
+    const VIRAL_THRESHOLD = 1;
 
-    // Loop over tweets and process engagement metrics
     for (const tweet of tweets?.data?.data || []) {
       const { like_count, retweet_count, reply_count } = tweet.public_metrics;
       const totalEngagement = like_count + retweet_count + reply_count;
 
-      // Only create an engagement record if the tweet is considered viral
+      await db.engagement.upsert({
+        where: { id: tweet.id },
+        update: {
+          likeCount: like_count,
+          retweetCount: retweet_count,
+          replyCount: reply_count,
+          totalEngagement,
+        },
+        create: {
+          twitterAccount: { connect: { id: account.id } },
+          tweetId: tweet.id,
+          engagementDate: new Date(tweet.created_at),
+          likeCount: like_count,
+          retweetCount: retweet_count,
+          replyCount: reply_count,
+          totalEngagement,
+        },
+      });
+
       if (totalEngagement >= VIRAL_THRESHOLD) {
-        await db.engagement.create({
-          data: {
-            twitterAccount: { connect: { id: account.id } },
-            tweetId: tweet.id,
-            engagementDate: today,
-            likeCount: like_count,
-            retweetCount: retweet_count,
-            replyCount: reply_count,
-            totalEngagement,
-          },
-        });
         viralTweetCount += 1;
       }
     }
 
-    // Update (or create) overall account analytics
+    // Fetch all engagement records for the account between startDate and today.
+    const engagements = await db.engagement.findMany({
+      where: {
+        twitterAccount: { id: account.id },
+        engagementDate: {
+          gte: startDate,
+          lte: today,
+        },
+      },
+      select: {
+        engagementDate: true,
+        totalEngagement: true,
+      },
+    });
+
+    // Aggregate engagement data by date.
+    const engagementData: Record<string, number> = {};
+    engagements.forEach((record) => {
+      const dateStr = record.engagementDate.toISOString().split("T")[0];
+      if (!engagementData[dateStr]) {
+        engagementData[dateStr] = record.totalEngagement;
+      } else {
+        engagementData[dateStr] += record.totalEngagement;
+      }
+    });
+
+    // Use the helper function to fill missing dates with zero engagement.
+    const filledDailyEngagement = fillMissingDates(
+      startDate,
+      today,
+      engagementData
+    );
+    console.log("Daily Engagement (filled):", filledDailyEngagement);
+    // --------------------------------------------------------------
+
+    // Update (or create) overall account analytics.
     await db.accountAnalyticData.upsert({
       where: { twitterAccountId: account.id },
       update: {
@@ -116,7 +155,11 @@ const processAccountAnalytics = async (account: TwitterAccount) => {
   }
 };
 
-// 🔹 Helper function to fill missing dates with 0 engagement
+/**
+ * Helper function to fill missing dates with 0 engagement.
+ * Given a start and end date and an object mapping dates to engagement values,
+ * returns an array with every date between start and end and 0 engagement for missing days.
+ */
 const fillMissingDates = (
   start: Date,
   end: Date,
