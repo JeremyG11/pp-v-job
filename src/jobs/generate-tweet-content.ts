@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { db } from "@/lib/db";
 import { assistantMapping } from "@/config/env";
+import { processTweetWithAI } from "@/controllers/tweet";
 import { EngagementType, PainPoint, Tweet } from "@prisma/client";
 
 const openai = new OpenAI({
@@ -21,128 +22,6 @@ async function getEmbeddings(text: string): Promise<number[]> {
     model: "text-embedding-3-small",
   });
   return response.data[0].embedding;
-}
-
-/**
- * @param tweetText  The text of the tweet
- * @param engagementType  The type of engagement
- * @returns  The response from the AI assistant
- */ async function processTweetWithAI(
-  tweetText: string,
-  engagementType: EngagementType,
-  business: PainPoint
-): Promise<string> {
-  try {
-    const normalizedEngagementType = engagementType.toLowerCase();
-
-    const assistantId = assistantMapping[normalizedEngagementType];
-    if (!assistantId) {
-      throw new Error(
-        `No assistant found for engagement type: ${engagementType}`
-      );
-    }
-
-    // Create a thread
-    const thread = await openai.beta.threads.create();
-
-    const {
-      name,
-      businessType,
-      businessRole,
-      siteSummary,
-      brandingKeywords,
-      keywords,
-    } = business;
-    const prompt = `
-      **ROLE**: You are a brand-safe Twitter engagement assistant for ${name}. 
-      that speaks like a practical and engaging social media manager. You craft concise and actionable responses that highlight solutions while naturally promoting an app or service.
-      Your responses MUST ALWAYS follow these rules:
-
-      **CORE RULES** (ABSOLUTE REQUIREMENTS):
-      1. NEVER claim association/ownership of other brands/technologies
-      2. ONLY mention ${name} when contextually relevant
-      3. USE HASHTAGS SPARINGLY: #${name} only when natural
-      4. RESPONSE STYLE: ${engagementType}-appropriate tone
-      5. BRAND VOICE: ${brandingKeywords.join(", ")}
-      6. SAFETY: Avoid legal/financial advice claims
-      7. Stay within 280 character limit
-      - Stay within 280 character limit.
-      - Maintain a conversational and helpful tone, making solutions easy to understand and engaging.
-      - Stay on topic: Ensure your responses provide clear, actionable suggestions tied to the app or service being promoted.
-      - Avoid generalizations: Focus on specific solutions or benefits relevant to the audience.
-      - Use strong verbs: Choose verbs that encourage action and make the app/service sound valuable.
-      - Vary your sentence structure: Keep the tone dynamic and natural to hold interest.
-      - Use emojis sparingly: Add personality but only with smileys.
-      - Ask questions: Engage your audience by inviting them to try or share their experiences with your app/service.
-      - Seamlessly connect the app/service to the solution: Promote benefits without sounding pushy.
-
-      **BUSINESS CONTEXT**:
-      - Type: ${businessType}
-      - Specialty: ${siteSummary}
-      - Your Role: ${businessRole}
-      - Target Keywords: ${keywords.join(", ")}
-      - Avoid: Third-party tech/platform mentions
-
-      **TWEET TO RESPOND TO**:
-      "${tweetText}"
-
-      **TASK**: Create 5 distinct response options that:
-      1. Align with ${name}'s services
-      2. Add value to the conversation
-      3. Maintain brand safety
-      4. Match ${engagementType} context
-      5. Encourage further interaction when revelant to ${engagementType}
-      6. Use ${brandingKeywords.join(", ")} when neccessary
-
-      **RESPONSE FORMAT**:
-          1. [Response Type]: [Response Text]
-          2. [Response Type]: [Response Text]
-          3. [Response Type]: [Response Text]
-          4. [Response Type]: [Response Text]
-          5. [Response Type]: [Response Text]
-
-      **BAD EXAMPLE** (NEVER DO THIS):
-      "Love our new AI feature!" ❌ (If not actually theirs)
-
-      **GOOD EXAMPLES**:
-      - "Interesting perspective! At ${name}, we approach similar challenges through ${businessRole}. How do you handle this in your workflow?"
-      - "Great discussion! ${businessType} companies often benefit from ${
-      (brandingKeywords[0], brandingKeywords[1])
-    }. #IndustryInsights"
-    `;
-    await openai.beta.threads.messages.create(thread.id, {
-      role: "user",
-      content: prompt,
-    });
-
-    const run = await openai.beta.threads.runs.create(thread.id, {
-      assistant_id: assistantId,
-    });
-
-    while (true) {
-      const runStatus = await openai.beta.threads.runs.retrieve(
-        thread.id,
-        run.id
-      );
-
-      if (runStatus.status === "completed") break;
-
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-
-    const messages = await openai.beta.threads.messages.list(thread.id);
-
-    const messageContent = messages.data[0]?.content[0];
-
-    const textContent =
-      "text" in messageContent
-        ? messageContent.text.value
-        : "No response generated.";
-    return textContent;
-  } catch (error) {
-    console.log("Error processing tweet:", error);
-    return "Error processing the tweet response.";
-  }
 }
 
 async function fetchAppPainpoint(accountId: string) {

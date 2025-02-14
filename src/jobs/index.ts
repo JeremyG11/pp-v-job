@@ -73,25 +73,25 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
     timezone: userTimezone,
   },
 
-  // {
-  //   id: `analyze-tweets-${user.id}`,
-  //   schedule: "0 0 * * *",
-  //   handler: async () => {
-  //     console.log(`Starting workflow for user ${user.id}...`);
+  {
+    id: `analyze-tweets-${user.id}`,
+    schedule: "* * * * *",
+    handler: async () => {
+      console.log(`Starting workflow for user ${user.id}...`);
 
-  //     try {
-  //       const state = await initializeState();
-  //       const result = await graph.invoke(state);
-  //       console.log(`Workflow completed for user ${user.id}:`, result);
-  //     } catch (error) {
-  //       console.error(
-  //         `Error running workflow for user ${user.id}:`,
-  //         error.message
-  //       );
-  //     }
+      try {
+        const state = await initializeState();
+        const result = await graph.invoke(state);
+        console.log(`Workflow completed for user ${user.id}:`, result);
+      } catch (error) {
+        console.error(
+          `Error running workflow for user ${user.id}:`,
+          error.message
+        );
+      }
 
-  //     console.log(`Completed workflow for user ${user.id}.`);
-  //   },
-  //   timezone: userTimezone,
-  // },
+      console.log(`Completed workflow for user ${user.id}.`);
+    },
+    timezone: userTimezone,
+  },
 ];

@@ -229,6 +229,7 @@ model Tweet {
 
   timestamp            String
   media                Media[]
+  embedding            TweetEmbedding?
 
   keyword              String?
 
@@ -245,6 +246,12 @@ model Tweet {
   @@index([tweetId])
 }
 
+model TweetEmbedding {
+  tweetId   String  @id
+  embedding Json
+
+  tweet     Tweet   @relation(fields: [tweetId], references: [id])
+}
 
 enum MediaType {
   IMAGE
