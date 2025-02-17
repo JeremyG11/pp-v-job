@@ -1,111 +1,196 @@
 import { tool } from "@langchain/core/tools";
-import { TweetRelevanceSchema, updateKeywordGraphSchema } from "@/schemas";
-
-/**
- * Grades the relevance of tweets to a business description and keywords.
- * Outputs relevance scores and grades.
- * @param input - The input data for the tool.
- * @returns The relevance scores and grades of the tweets.
- * @throws An error if there is a problem grading the tweets.
- */
+import { ChatOpenAI } from "@langchain/openai";
+import { AIMessage } from "@langchain/core/messages";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+import { createBatchEmbeddings, searchHybridTweets } from "@/lib/util";
+import {
+  ExtendedUpdateKeywordGraphSchema,
+  TweetRelevanceResultSchema,
+} from "@/schemas";
 
 export const tweetRelevanceTool = tool(
   async (input) => {
     try {
-      const tweets = input.tweets;
       const businessDescription = input.businessDescription;
-      const keywords = input.keywords;
+      const [businessEmbedding] = await createBatchEmbeddings([
+        businessDescription,
+      ]);
 
-      const results = tweets.map((tweet) => {
-        const relevanceScore = calculateRelevance(
-          tweet,
-          businessDescription,
-          keywords
-        );
-        return {
-          tweet,
-          relevanceScore,
-        };
-      });
+      // Call searchHybridTweets which leverages pgvector's ANN operator
+      const similarTweets = await searchHybridTweets(
+        businessDescription,
+        businessEmbedding,
+        50
+      );
 
-      return JSON.stringify(results, null, 2);
-    } catch (e: any) {
-      console.warn("Error grading tweets", e.message);
-      return `An error occurred while grading tweets: ${e.message}`;
+      // Map the results to our desired format
+      const tweetResults = similarTweets.map((tweet) => ({
+        tweet: tweet.text,
+        relevanceScore: tweet.similarity,
+      }));
+
+      // Calculate the average relevance score
+      const totalScore = tweetResults.reduce(
+        (acc, tweet) => acc + tweet.relevanceScore,
+        0
+      );
+      const averageScore =
+        tweetResults.length > 0 ? totalScore / tweetResults.length : 0;
+
+      return {
+        averageScore,
+        tweets: tweetResults,
+      };
+    } catch (error: any) {
+      console.error("Error in tweet_relevance tool:", error.message);
+      throw new Error("Failed to grade tweet relevance.");
     }
   },
   {
     name: "tweet_relevance",
     description:
-      "Grades the relevance of tweets to a business description and keywords. Outputs relevance scores and grades.",
-    schema: TweetRelevanceSchema,
+      "Analyzes and ranks the relevance of tweets with respect to a provided business description. " +
+      "It returns both an average relevance score and a list of tweets with their corresponding relevance scores.",
+    schema: TweetRelevanceResultSchema,
   }
 );
 
-/**
- * Calculates the relevance of a tweet to a business description and keywords.
- * @param tweetText - The text of the tweet to analyze.
- * @param businessDescription - A detailed description of the business.
- * @param keywords - A list of keywords associated with the business.
- * @returns The relevance score of the tweet.
- */
-function calculateRelevance(
-  tweetText: string,
-  businessDescription: string,
-  keywords: string[]
-) {
-  // Placeholder logic for calculating relevance score
-  const lowerTweet = tweetText.toLowerCase();
-  const lowerDescription = businessDescription.toLowerCase();
-  const keywordMatches = keywords.filter((kw) =>
-    lowerTweet.includes(kw.toLowerCase())
-  ).length;
-
-  const descriptionRelevance = lowerTweet.includes(lowerDescription) ? 1 : 0;
-  return descriptionRelevance + keywordMatches;
-}
-
-/**
- * Refines the keyword graph based on tweet relevance suggestions.
- * Outputs the original and updated graph.
- * @param input - The input data for the tool.
- * @returns The original and updated keyword graph.
- * @throws An error if there is a problem updating the keyword graph.
- */
-const updateKeywordGraphTool = tool(
+export const updateKeywordGraphTool = tool(
   async (input) => {
     try {
-      const keywords = input.keywords;
-      const suggestion = input.suggestion;
+      const {
+        keywords,
+        suggestion,
+        businessDescription,
+        tweets,
+        averageScore,
+      } = input;
 
-      const updatedGraph = suggestion.includes("refining")
-        ? refineKeywordGraph(keywords)
-        : keywords;
+      // If suggestion does not include "refining", return the current keywords.
+      if (!suggestion.includes("refining")) {
+        return JSON.stringify(
+          {
+            originalKeywords: keywords,
+            updatedGraph: keywords,
+          },
+          null,
+          2
+        );
+      }
+
+      const promptTemplateStr = `You are a social media expert. Your task is to generate exactly 5 short keywords (each 1-2 words) for targeted Twitter queries based on the context below.
+
+                                Business Description:
+                                {businessDescription}
+
+                                Existing Keywords:
+                                {existingKeywords}
+
+                                Returned Tweets:
+                                {tweets}
+
+                                Average Relevance Score: {averageScore}
+
+                                Output:
+                                Return a JSON array of exactly 5 strings.
+                                Example: ["patents", "innovation", "alerts", "search", "trends"]
+
+                                Do not include any extra text.`;
+
+      // Create a ChatPromptTemplate from the template string.
+      const promptTemplate = ChatPromptTemplate.fromTemplate(promptTemplateStr);
+
+      // Create an LLM instance.
+      const llm = new ChatOpenAI({
+        model: "gpt-4o",
+        temperature: 0.7,
+      });
+
+      // Chain the prompt with the LLM using the pipe() method.
+      const chain = promptTemplate.pipe(llm);
+
+      // Invoke the chain with the required parameters.
+      const chainResponse = await chain.invoke({
+        businessDescription,
+        existingKeywords: keywords.join(", "),
+        tweets: tweets.join("\n"),
+        averageScore: averageScore.toFixed(2),
+      });
+
+      // Parse the chain's output (expected to be a JSON array as a string).
+      const refinedKeywords = JSON.parse(chainResponse.text) as string[];
 
       return JSON.stringify(
         {
           originalKeywords: keywords,
-          updatedGraph,
+          updatedGraph: refinedKeywords,
         },
         null,
         2
       );
     } catch (e: any) {
-      console.log("Error updating keyword graph", e.message);
+      console.error("Error updating keyword graph:", e.message);
       return `An error occurred while updating the keyword graph: ${e.message}`;
     }
   },
   {
     name: "update_keyword_graph",
     description:
-      "Refines the keyword graph based on tweet relevance suggestions. Outputs the original and updated graph.",
-    schema: updateKeywordGraphSchema,
+      "Refines the keyword graph using the current keywords, business description, and tweet analysis. " +
+      "Call this tool with the current keywords, a suggestion (e.g., 'refining'), the business description, and the returned tweets.",
+    schema: ExtendedUpdateKeywordGraphSchema,
   }
 );
 
-function refineKeywordGraph(keywords: string[]) {
-  // Placeholder logic for refining the keyword graph
-  return keywords.map((kw) => `${kw}-refined`);
+//
+export async function generateRefinedKeywords(
+  businessDescription: string,
+  existingKeywords: string[],
+  tweets: string[],
+  averageScore: number
+): Promise<string[]> {
+  const promptStr = `You are a social media expert. Your task is to generate exactly 5 short keywords (each 1-2 words) for targeted Twitter queries based on the context below.
+
+Business Description:
+${businessDescription}
+
+Existing Keywords:
+${existingKeywords.join(", ")}
+
+Returned Tweets:
+${tweets.join("\n")}
+
+Average Relevance Score: ${averageScore.toFixed(2)}
+
+Output:
+Return a JSON array of exactly 5 strings.
+Example: ["patents", "innovation", "alerts", "search", "trends"]
+
+Do not include any extra text.`;
+
+  const llm = new ChatOpenAI({
+    model: "gpt-4o",
+    temperature: 0.7,
+  });
+
+  const response: AIMessage = await llm.invoke([
+    { role: "system", content: promptStr },
+  ]);
+  console.log("LLM Response Content:", response.content);
+
+  let keywords: string[] = [];
+  try {
+    if (typeof response.content === "string") {
+      keywords = JSON.parse(response.content);
+    } else {
+      console.error("Response content is not a string:", response.content);
+    }
+  } catch (e) {
+    console.error("Failed to parse generated keywords as JSON:", e);
+  }
+
+  console.log("🔑 Generated keywords:", keywords);
+  return keywords;
 }
 
 export const ALL_TOOLS_LIST = [tweetRelevanceTool, updateKeywordGraphTool];

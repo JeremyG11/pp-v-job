@@ -21,3 +21,10 @@ eventEmitter.on(
 );
 
 export { eventEmitter };
+
+export async function notifyKeywordsRefined(
+  refinedKeywords: string[],
+  userId: string
+) {
+  eventEmitter.emit("keywordsRefined", { userId, refinedKeywords });
+}

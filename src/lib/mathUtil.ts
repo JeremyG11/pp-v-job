@@ -4,11 +4,9 @@
  * @param vecB - Second vector.
  * @returns Cosine similarity score.
  */
-export const cosineSimilarity = (vecA: number[], vecB: number[]): number => {
-  const dotProduct = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
-  const magnitudeA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
-  const magnitudeB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
-
-  if (magnitudeA === 0 || magnitudeB === 0) return 0;
-  return dotProduct / (magnitudeA * magnitudeB);
+export const cosineSimilarity = (a: number[], b: number[]): number => {
+  const dot = a.reduce((acc, val, i) => acc + val * b[i], 0);
+  const normA = Math.sqrt(a.reduce((acc, val) => acc + val * val, 0));
+  const normB = Math.sqrt(b.reduce((acc, val) => acc + val * val, 0));
+  return normA && normB ? dot / (normA * normB) : 0;
 };

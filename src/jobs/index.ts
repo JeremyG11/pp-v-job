@@ -6,10 +6,9 @@ import { fetchUserTimeline } from "./fetchUserTimeline";
 import { fetchTweetsForAccounts } from "./fetch-tweet";
 import { TweetAccountStatus, User } from "@prisma/client";
 import { generateResponsesForTopTweets } from "./generate-tweet-content";
+import { graph, initializeState } from "@/graphs";
 
 // graph from langgraph
-import { graph } from "@/graphs";
-import { initializeState } from "@/graphs/graph-init";
 
 export const createJobs = (user: User, userTimezone: string): Job[] => [
   {
@@ -77,20 +76,15 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
     id: `analyze-tweets-${user.id}`,
     schedule: "* * * * *",
     handler: async () => {
-      console.log(`Starting workflow for user ${user.id}...`);
-
       try {
-        const state = await initializeState();
-        const result = await graph.invoke(state);
-        console.log(`Workflow completed for user ${user.id}:`, result);
+        const state = await initializeState({ userId: user.id });
+        await graph.invoke(state);
       } catch (error) {
         console.error(
           `Error running workflow for user ${user.id}:`,
           error.message
         );
       }
-
-      console.log(`Completed workflow for user ${user.id}.`);
     },
     timezone: userTimezone,
   },

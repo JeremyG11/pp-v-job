@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
-import { TweetAccountStatus } from "@prisma/client";
 import { ChatOpenAI } from "@langchain/openai";
+import { TweetAccountStatus } from "@prisma/client";
 import {
   StateGraph,
   Annotation,
@@ -8,28 +8,31 @@ import {
   END,
   START,
 } from "@langchain/langgraph";
-import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { AIMessage } from "@langchain/core/messages";
-import { TtweetRelevanceResult } from "@/types";
-import { ALL_TOOLS_LIST, tweetRelevanceTool } from "./tools";
+import { ToolNode } from "@langchain/langgraph/prebuilt";
+import {
+  ALL_TOOLS_LIST,
+  generateRefinedKeywords,
+  updateKeywordGraphTool,
+} from "./tools";
+import {
+  createBatchEmbeddings,
+  searchHybridTweets,
+  storeBatchTweetEmbeddings,
+} from "@/lib/util";
+import { notifyKeywordsRefined } from "@/events";
+import { TweetRelevanceResult, UpdateKeywordGraphResult } from "@/schemas";
 
-//
-// --- Constants & Configurations ---
-//
-const RELEVANCE_THRESHOLD = 2; // Threshold to trigger keyword refinement
+const RELEVANCE_THRESHOLD = 0.5;
 
-//
-// --- Define LangChain Graph Annotations & Memory ---
-//
 const GraphAnnotation = Annotation.Root({
   ...MessagesAnnotation.spec,
-  tweetRelevanceResult: Annotation<TtweetRelevanceResult>(),
-  updateKeywordGraphResult: Annotation<unknown>(),
+  tweetRelevanceResult: Annotation<TweetRelevanceResult>(),
+  updateKeywordGraphResult: Annotation<UpdateKeywordGraphResult>(),
+  userId: Annotation<string>(),
 });
 
-//
-// --- LLM & Tool Setup ---
-//
+// Initialize OpenAI API
 const llm = new ChatOpenAI({
   model: "gpt-4o",
   temperature: 0,
@@ -37,100 +40,107 @@ const llm = new ChatOpenAI({
 
 const toolsNode = new ToolNode(ALL_TOOLS_LIST);
 
-//
-// --- Function to Call LLM with Memory Integration ---
-//
 const callModel = async (state: typeof GraphAnnotation.State) => {
-  try {
-    const { messages } = state;
+  const { messages } = state;
 
-    const systemMessage = {
-      role: "system",
-      content:
-        "You're an expert analyst who evaluates tweet relevance to business descriptions and updates keyword graphs as needed.",
-    };
+  const systemMessage = {
+    role: "system",
+    content:
+      "You are an expert analyst evaluating tweet relevance to a business description. " +
+      "If you determine that the tweets are not sufficiently relevant (i.e. if the average relevance score is low), " +
+      "you must call the tool `update_keyword_graph`. " +
+      'For example, if the current keywords are ["patent tracking", "patent insights"] and the tweets are not matching well, ' +
+      'output a tool call like: { "name": "update_keyword_graph", "args": { "keywords": ["patent tracking", "patent insights"], "suggestion": "refining" } }.',
+  };
 
-    const llmWithTools = llm.bindTools(ALL_TOOLS_LIST);
-    const result = await llmWithTools.invoke([systemMessage, ...messages]);
+  const llmWithTools = llm.bindTools(ALL_TOOLS_LIST);
+  const result: AIMessage = await llmWithTools.invoke([
+    systemMessage,
+    ...messages,
+  ]);
 
-    return { messages: result };
-  } catch (error) {
-    console.error("Error in callModel:", error);
-    throw new Error("Failed to process LLM request.");
+  // Ensure tool calls are processed
+  if (result.tool_calls?.length) {
+    for (const toolCall of result.tool_calls) {
+      if (toolCall.name === "tweet_relevance") {
+        const toolResult = await ALL_TOOLS_LIST.find(
+          (tool) => tool.name === "tweet_relevance"
+        )?.invoke(toolCall.args);
+
+        if (toolResult) {
+          state.tweetRelevanceResult = toolResult;
+        }
+      }
+    }
   }
+
+  return { messages: result };
 };
 
-//
-// --- Decision Function for Feedback Loop ---
-//
 const shouldRefineKeywords = (state: typeof GraphAnnotation.State) => {
+  const { messages } = state;
+
+  const lastMessage = messages[messages.length - 1] as AIMessage;
+
+  const args = lastMessage.tool_calls[0].args;
+  const avgScore = args.averageScore;
+
+  if (avgScore && avgScore < RELEVANCE_THRESHOLD) {
+    return "update_keyword";
+  }
+  console.log("🚫 No need to refine keywords.");
+  return END;
+};
+
+const updateKeywords = async (state: typeof GraphAnnotation.State) => {
   try {
-    const { messages, tweetRelevanceResult } = state;
+    const { messages, userId } = state;
     const lastMessage = messages[messages.length - 1] as AIMessage;
 
     if (lastMessage._getType() !== "ai" || !lastMessage.tool_calls?.length) {
       return END;
     }
 
-    if (tweetRelevanceResult?.result) {
-      const results = JSON.parse(tweetRelevanceResult.result);
-      const avgScore =
-        results.reduce(
-          (acc: number, curr: { relevanceScore: number }) =>
-            acc + curr.relevanceScore,
-          0
-        ) / results.length;
+    // Extract and transform args from the first tool call.
+    const rawArgs = lastMessage.tool_calls[0].args;
+    const transformedArgs = {
+      averageScore: rawArgs.averageScore,
+      keywords: rawArgs.keywords,
+      suggestion: rawArgs.suggestion || "refining",
+      businessDescription: rawArgs.businessDescription,
+      tweets: Array.isArray(rawArgs.tweets)
+        ? rawArgs.tweets.map((t: any) =>
+            typeof t === "object" && t.tweet ? t.tweet : t
+          )
+        : [],
+    };
 
-      if (avgScore < RELEVANCE_THRESHOLD) {
-        return "update_keyword";
-      }
-    }
-    return END;
-  } catch (error) {
-    console.error("Error in shouldRefineKeywords:", error);
-    return END;
-  }
-};
-
-//
-// --- Keyword Refinement Process ---
-//
-const updateKeywords = async (state: typeof GraphAnnotation.State) => {
-  try {
-    const { messages } = state;
-    const lastMessage = messages[messages.length - 1] as AIMessage;
-
-    if (lastMessage._getType() !== "ai") {
-      throw new Error("Expected the last message to be an AI message");
-    }
-
-    // Find the tool call for keyword graph update
-    const updateKeywordsToolCall = lastMessage.tool_calls?.find(
-      (tc) => tc.name === "update_keyword_graph"
+    // Call the LLM to generate refined keywords
+    const refinedKeywords = await generateRefinedKeywords(
+      transformedArgs.businessDescription,
+      transformedArgs.keywords,
+      transformedArgs.tweets,
+      transformedArgs.averageScore
     );
 
-    if (!updateKeywordsToolCall) {
-      throw new Error(
-        "Expected an `update_keyword_graph` tool call in the last AI message"
-      );
-    }
+    // save as notification
+    await db.notification.create({
+      data: {
+        userId,
+        message: "Your pain point keywords update suggestion",
+        data: refinedKeywords,
+      },
+    });
 
-    const { args } = updateKeywordsToolCall;
-    console.log("Updating keywords with arguments:", args);
-
-    const updatedKeywords = args.keywords?.map((kw: string) => `${kw}-refined`);
-    console.log("Updated Keywords:", updatedKeywords);
-
-    return updatedKeywords;
-  } catch (error) {
-    console.error("Error in updateKeywords:", error);
+    console.log("✅ Refined Keywords from LLM:", refinedKeywords);
+    return { messages: [new AIMessage(refinedKeywords.join(", "))] };
+  } catch (error: any) {
+    console.error("❌ Error in updateKeywords:", error.message);
     throw new Error("Keyword refinement failed.");
   }
 };
 
-//
 // --- Construct LangChain Workflow Graph ---
-//
 const workflow = new StateGraph(GraphAnnotation)
   .addNode("agent", callModel)
   .addEdge(START, "agent")
@@ -141,21 +151,10 @@ const workflow = new StateGraph(GraphAnnotation)
 
 export const graph = workflow.compile({});
 
-//
-// --- Initialization with Vector Database & Optimized Queries ---
-//import { db } from "@/lib/db";
-
-import {
-  createBatchEmbeddings,
-  searchHybridTweets,
-  storeBatchTweetEmbeddings,
-} from "@/lib/vectorUtils";
-
-export const initializeState = async () => {
+export const initializeState = async ({ userId }: { userId: string }) => {
   try {
-    // Fetch active Twitter accounts
     const twitterAccounts = await db.twitterAccount.findMany({
-      where: { status: TweetAccountStatus.ACTIVE },
+      where: { userId, status: TweetAccountStatus.ACTIVE },
       include: { painPoint: { select: { siteSummary: true, keywords: true } } },
     });
 
@@ -165,10 +164,13 @@ export const initializeState = async () => {
 
     const account = twitterAccounts[0];
     const { painPoint } = account;
-    const businessDescription = painPoint.siteSummary;
-    const keywords = painPoint.keywords;
+    const businessDescription = painPoint.siteSummary || "";
+    const keywords = painPoint.keywords || [];
 
-    // Fetch today's tweets
+    if (!businessDescription.trim()) {
+      throw new Error("Business description is empty.");
+    }
+
     const tweets = await db.tweet.findMany({
       where: {
         twitterAccountId: account.id,
@@ -180,19 +182,20 @@ export const initializeState = async () => {
       throw new Error("No tweets found for today.");
     }
 
-    // Generate and store embeddings
     const embeddings = await createBatchEmbeddings(tweets.map((t) => t.text));
     await storeBatchTweetEmbeddings(
-      tweets.map((t, i) => ({ tweetId: t.id, embedding: embeddings[i] }))
+      tweets.map((t, i) => ({
+        tweetId: t.id,
+        tweetText: t.text,
+        embedding: embeddings[i],
+      }))
     );
 
-    // Generate business profile embedding and perform Hybrid Search
-    const profileEmbedding = await createBatchEmbeddings([businessDescription]);
-    const relevantTweets = await searchHybridTweets(
+    const [businessEmbedding] = await createBatchEmbeddings([
       businessDescription,
-      profileEmbedding[0],
-      10
-    );
+    ]);
+
+    await searchHybridTweets(businessDescription, businessEmbedding, 10);
 
     return {
       messages: [
@@ -202,16 +205,13 @@ export const initializeState = async () => {
         },
         {
           role: "user",
-          content: JSON.stringify({
-            tweets: relevantTweets.map((t) => t.text),
-            businessDescription,
-            keywords,
-          }),
+          content: JSON.stringify({ tweets, businessDescription, keywords }),
         },
       ],
+      userId,
     };
-  } catch (error) {
-    console.error("❌ Error in initializeState:", error);
+  } catch (error: any) {
+    console.error("❌ Error in initializeState:", error.message);
     throw new Error("Failed to initialize state.");
   }
 };
