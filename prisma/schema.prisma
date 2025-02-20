@@ -35,6 +35,10 @@ enum EngagementType {
   AI_RECOMMENDED 
 }
 
+enum NotificationType {
+ KEYWORDREFINEMENT
+}
+
 model User {
   id                          String    @id @default(uuid())
   name                        String?
@@ -420,6 +424,7 @@ model Notification {
   message     String   
   data        String[]    
   seen        Boolean  @default(false)
+  type        NotificationType 
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

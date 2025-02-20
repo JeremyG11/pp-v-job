@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { ChatOpenAI } from "@langchain/openai";
-import { TweetAccountStatus } from "@prisma/client";
+import { NotificationType, TweetAccountStatus } from "@prisma/client";
 import {
   StateGraph,
   Annotation,
@@ -10,18 +10,15 @@ import {
 } from "@langchain/langgraph";
 import { AIMessage } from "@langchain/core/messages";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
-import {
-  ALL_TOOLS_LIST,
-  generateRefinedKeywords,
-  updateKeywordGraphTool,
-} from "./tools";
+import { ALL_TOOLS_LIST, generateRefinedKeywords } from "./tools";
 import {
   createBatchEmbeddings,
   searchHybridTweets,
   storeBatchTweetEmbeddings,
 } from "@/lib/util";
-import { notifyKeywordsRefined } from "@/events";
+import { io } from "../index";
 import { TweetRelevanceResult, UpdateKeywordGraphResult } from "@/schemas";
+import { activeUsers } from "@/socket";
 
 const RELEVANCE_THRESHOLD = 0.5;
 
@@ -123,12 +120,37 @@ const updateKeywords = async (state: typeof GraphAnnotation.State) => {
       transformedArgs.averageScore
     );
 
-    // save as notification
+    const recipientSocketId = activeUsers.get(userId);
+    console.log("🛠️ Active users map:", activeUsers);
+    console.log(`👤 Checking if user ${userId} is online...`);
+
+    if (!recipientSocketId) {
+      console.log(
+        `⚠️ User ${userId} is not online. Notification will not be delivered.`
+      );
+      return;
+    }
+
+    console.log(
+      `📡 Sending WebSocket notification to socket ID: ${recipientSocketId}`
+    );
+
+    io.to(recipientSocketId).emit("newNotification", {
+      userId,
+      message: "Your pain point keywords update suggestion",
+      data: refinedKeywords,
+      seen: false,
+      type: NotificationType.KEYWORDREFINEMENT,
+      createdAt: new Date().toISOString(),
+    });
+
     await db.notification.create({
       data: {
         userId,
         message: "Your pain point keywords update suggestion",
         data: refinedKeywords,
+        seen: false,
+        type: NotificationType.KEYWORDREFINEMENT,
       },
     });
 

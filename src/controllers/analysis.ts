@@ -46,9 +46,6 @@ export const AnalyzeSiteController = async (
   const { url, twitterAccountId } = req.body;
 
   try {
-    console.log(`Fetching content from URL: ${url}`);
-
-    // Fetch website content
     const { data: html } = await axios.get<string>(url, { timeout: 20000 });
 
     if (!html || html.trim().length === 0) {
@@ -68,7 +65,7 @@ export const AnalyzeSiteController = async (
     const headings = Array.from(document.querySelectorAll("h1"))
       .map((el) => el.textContent?.trim() || "")
       .slice(0, 5);
-    const bodyText = document.body.textContent?.slice(0, 2000) || "";
+    const bodyText = document.body.textContent || "";
 
     let businessData: BusinessData = {
       businessType: "Unknown",
@@ -121,9 +118,9 @@ export const AnalyzeSiteController = async (
       - Seamless **collaboration tools** 🤝
 
       ### Pain Points Solved
-      📌 Eliminates **manual workflow delays**  
-      📌 **Streamlines** task assignments  
-      📌 Reduces **team coordination overhead**  
+       Eliminates **manual workflow delays**  
+       **Streamlines** task assignments  
+       Reduces **team coordination overhead**  
       \`\`\`
 
       Title: ${title}
