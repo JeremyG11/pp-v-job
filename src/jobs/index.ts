@@ -75,7 +75,6 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
   /**
    * Analyze tweets every day at 12:25 AM.
    * This is a cron expression that runs at 12:25 AM every day.
-   * This job is scheduled to run after the fetch-dms job.
    */
   {
     id: `analyze-tweets-${user.id}`,
