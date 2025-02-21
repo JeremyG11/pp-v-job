@@ -233,7 +233,7 @@ export const initializeState = async ({ userId }: { userId: string }) => {
       userId,
     };
   } catch (error: any) {
-    console.error("❌ Error in initializeState:", error.message);
+    console.error("❌ Error in initializeState:", error);
     throw new Error("Failed to initialize state.");
   }
 };
