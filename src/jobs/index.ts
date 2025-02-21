@@ -79,7 +79,7 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
    */
   {
     id: `analyze-tweets-${user.id}`,
-    schedule: "25 0 * * *",
+    schedule: "*/5 * * * *",
     handler: async () => {
       try {
         const state = await initializeState({ userId: user.id });
