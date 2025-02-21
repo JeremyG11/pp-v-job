@@ -199,23 +199,31 @@ async function recommendEngagementType(
     } while (runStatus.status !== "completed");
 
     const messages = await openai.beta.threads.messages.list(thread.id);
+
     const assistantResponse = messages.data[0]?.content[0];
 
-    const recommendedType =
-      "text" in assistantResponse
-        ? assistantResponse.text.value.trim()
-        : EngagementType.SOLUTION;
+    let recommendedType = EngagementType.SOLUTION;
 
-    console.log("Assistant Response:", recommendedType);
+    if ("text" in assistantResponse) {
+      try {
+        // ✅ Parse JSON response
+        const parsedResponse = JSON.parse(assistantResponse.text.value.trim());
 
-    if (!(recommendedType in EngagementType)) {
-      console.warn(
-        `Invalid engagement type: "${recommendedType}". Defaulting to SOLUTION.`
-      );
-      return EngagementType.SOLUTION;
+        if (parsedResponse.engagementType in EngagementType) {
+          recommendedType = parsedResponse.engagementType;
+        } else {
+          console.warn(
+            `Invalid engagement type received: "${parsedResponse.engagementType}". Defaulting to SOLUTION.`
+          );
+        }
+      } catch (err) {
+        console.warn(
+          "Failed to parse assistant response. Defaulting to SOLUTION."
+        );
+      }
     }
 
-    return recommendedType as EngagementType;
+    return recommendedType;
   } catch (error: any) {
     console.error(
       "Error recommending engagement type:",
