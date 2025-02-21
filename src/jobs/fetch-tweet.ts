@@ -31,14 +31,12 @@ export const fetchTweetsForAccount = async (accountId: string) => {
     const roClient = client.readOnly;
     const keywords = account.painPoint.keywords;
 
-    /** ✅ Construct a proper search query */
     const query = `(${keywords
       .map((k) => `"${k}"`)
       .join(" OR ")}) -is:retweet -is:reply -is:quote lang:en`;
 
     console.log(`🔍 Fetching tweets for query: ${query}`);
 
-    /** ✅ Set the date range (past 7 days) */
     const endTime = new Date().toISOString();
     const startTime = new Date();
     startTime.setDate(startTime.getDate() - 7);
@@ -48,7 +46,6 @@ export const fetchTweetsForAccount = async (accountId: string) => {
     let nextToken: string | null = null;
     let attempts = 0;
 
-    /** ✅ Pagination to fetch more tweets */
     do {
       const response = await roClient.v2.search(query, {
         "tweet.fields": "author_id,public_metrics,id,text,created_at",
@@ -69,14 +66,12 @@ export const fetchTweetsForAccount = async (accountId: string) => {
           tweetsCollected.length
         } (Attempt ${++attempts})`
       );
-    } while (nextToken && tweetsCollected.length < 50 && attempts < 10); // Stop after 50 tweets or 10 attempts
+    } while (nextToken && tweetsCollected.length < 50 && attempts < 10);
 
-    /** ✅ Remove duplicate tweets by Tweet ID */
     const uniqueTweets: TweetV2[] = Array.from(
       new Map(tweetsCollected.map((tweet) => [tweet.id, tweet])).values()
     );
 
-    /** ✅ Save to Database */
     for (const tweet of uniqueTweets) {
       let author: UserV2 | undefined;
 
@@ -92,7 +87,7 @@ export const fetchTweetsForAccount = async (accountId: string) => {
 
       if (matchingKeywords.length === 0) {
         console.log(`⚠️ No keyword match found for tweet: ${tweet.text}`);
-        continue; // Skip if tweet doesn't match keywords
+        continue;
       }
 
       await db.tweet.upsert({
