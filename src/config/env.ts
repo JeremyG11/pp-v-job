@@ -1,15 +1,13 @@
-export const serverUrl = process.env.NEXT_PUBLIC_NODE_SERVER_URL!;
-
 export const assistantMapping: Record<string, string> = {
-  agreeableness_agree: process.env.NEXT_PUBLIC_ASSISTANT_AGREE!,
-  agreeableness_disagree: process.env.NEXT_PUBLIC_ASSISTANT_DISAGREE!,
-  authority: process.env.NEXT_PUBLIC_ASSISTANT_AUTHORITY!,
-  empathy: process.env.NEXT_PUBLIC_ASSISTANT_EMPATHY!,
-  solution: process.env.NEXT_PUBLIC_ASSISTANT_SOLUTION!,
-  humor: process.env.NEXT_PUBLIC_ASSISTANT_HUMOR!,
-  question: process.env.NEXT_PUBLIC_ASSISTANT_QUESTION!,
-  contrarian: process.env.NEXT_PUBLIC_ASSISTANT_CONTRARIAN!,
-  trend: process.env.NEXT_PUBLIC_ASSISTANT_TREND!,
-  what_if: process.env.NEXT_PUBLIC_ASSISTANT_WHAT_IF!,
-  ai_recommended: process.env.NEXT_PUBLIC_ASSISTANT_AI_RECOMMENDED!,
+  agreeableness_agree: process.env.ASSISTANT_AGREE!,
+  agreeableness_disagree: process.env.ASSISTANT_DISAGREE!,
+  authority: process.env.ASSISTANT_AUTHORITY!,
+  empathy: process.env.ASSISTANT_EMPATHY!,
+  solution: process.env.ASSISTANT_SOLUTION!,
+  humor: process.env.ASSISTANT_HUMOR!,
+  question: process.env.ASSISTANT_QUESTION!,
+  contrarian: process.env.ASSISTANT_CONTRARIAN!,
+  trend: process.env.ASSISTANT_TREND!,
+  what_if: process.env.ASSISTANT_WHAT_IF!,
+  ai_recommended: process.env.ASSISTANT_AI_RECOMMENDED!,
 };
