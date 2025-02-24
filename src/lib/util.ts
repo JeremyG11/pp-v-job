@@ -17,6 +17,9 @@ export const getUserTimezone = async (userId: string): Promise<string> => {
 // Initialize PostgreSQL connection pool
 export const _pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false,
+  },
 });
 
 // Initialize OpenAI API
