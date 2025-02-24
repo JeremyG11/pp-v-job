@@ -75,6 +75,7 @@ const callModel = async (state: typeof GraphAnnotation.State) => {
 };
 
 const shouldRefineKeywords = (state: typeof GraphAnnotation.State) => {
+  console.log("Reached...");
   const { messages } = state;
 
   const lastMessage = messages[messages.length - 1] as AIMessage;

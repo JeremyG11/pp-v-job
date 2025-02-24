@@ -34,7 +34,6 @@ function renderSystemMessage(
     .replace(/\$\{keywords\}/g, values.keywords)
     .replace(/\$\{engagementType\}/g, values.engagementType)
     .replace(/\$\{tweetText\}/g, values.tweetText);
-  console.log("[renderSystemMessage] Rendered system message:", rendered);
   return rendered;
 }
 
@@ -47,15 +46,7 @@ async function fetchAndRenderSystemMessage(
   engagementType: EngagementType,
   tweetText: string
 ): Promise<string> {
-  console.log(
-    "[fetchAndRenderSystemMessage] Retrieving assistant",
-    assistantId
-  );
   const myAssistant = await openai.beta.assistants.retrieve(assistantId);
-  console.log(
-    "[fetchAndRenderSystemMessage] Retrieved assistant:",
-    myAssistant
-  );
 
   const systemTemplate = myAssistant.instructions;
   const rendered = renderSystemMessage(systemTemplate, {
@@ -68,10 +59,7 @@ async function fetchAndRenderSystemMessage(
     engagementType: engagementType.toLowerCase(),
     tweetText,
   });
-  console.log(
-    "[fetchAndRenderSystemMessage] Rendered system message:",
-    rendered
-  );
+
   return rendered;
 }
 
@@ -84,25 +72,19 @@ async function createThreadWithMessages(
   renderedSystemMessage: string,
   tweetText: string
 ): Promise<string> {
-  console.log("[createThreadWithMessages] Creating thread...");
   const thread = await openai.beta.threads.create();
-  console.log("[createThreadWithMessages] Thread created with id:", thread.id);
 
   // Send the rendered system message as an assistant message.
-  console.log("[createThreadWithMessages] Sending assistant message...");
   await openai.beta.threads.messages.create(thread.id, {
     role: "assistant",
     content: renderedSystemMessage,
   });
-  console.log("[createThreadWithMessages] Assistant message sent.");
 
   // Send the tweet text as a user message.
-  console.log("[createThreadWithMessages] Sending user message...");
   await openai.beta.threads.messages.create(thread.id, {
     role: "user",
     content: tweetText,
   });
-  console.log("[createThreadWithMessages] User message sent.");
 
   return thread.id;
 }
@@ -115,7 +97,6 @@ async function startRunAndPoll(
   assistantId: string,
   business: PainPoint
 ): Promise<void> {
-  console.log("[startRunAndPoll] Starting run on thread:", threadId);
   const run = await openai.beta.threads.runs.create(threadId, {
     assistant_id: assistantId,
     metadata: {
@@ -123,17 +104,12 @@ async function startRunAndPoll(
       business_role: business.businessRole,
     },
   });
-  console.log("[startRunAndPoll] Run started with id:", run.id);
 
   let attempts = 0;
   while (attempts++ < 30) {
     const status = await openai.beta.threads.runs.retrieve(threadId, run.id);
-    console.log(
-      `[startRunAndPoll] Attempt ${attempts}, run status:`,
-      status.status
-    );
+
     if (status.status === "completed") {
-      console.log("[startRunAndPoll] Run completed successfully.");
       return;
     }
     if (status.status === "failed") {
@@ -148,16 +124,13 @@ async function startRunAndPoll(
  * Retrieves and returns the assistant's response text from the thread.
  */
 async function getResponseFromThread(threadId: string): Promise<string> {
-  console.log("[getResponseFromThread] Listing messages for thread:", threadId);
   const messages = await openai.beta.threads.messages.list(threadId);
-  console.log("[getResponseFromThread] Retrieved messages:", messages.data);
 
   const responseMessage = messages.data.find((m) => m.role === "assistant")
     ?.content[0];
   if (!responseMessage || !("text" in responseMessage)) {
     throw new Error("No valid response generated");
   }
-  console.log("[getResponseFromThread] Response message:", responseMessage);
   return responseMessage.text.value;
 }
 
@@ -165,13 +138,11 @@ async function getResponseFromThread(threadId: string): Promise<string> {
  * Optionally applies post-processing filters to the response text.
  */
 function applyPostFilters(text: string, business: PainPoint): string {
-  console.log("[applyPostFilters] Original response text:", text);
   const forbiddenTerms = [" proprietary", " our platform"];
   let filtered = text;
   forbiddenTerms.forEach((term) => {
     filtered = filtered.replace(new RegExp(term, "gi"), `[${business.name}]`);
   });
-  console.log("[applyPostFilters] Filtered response text:", filtered);
   return filtered;
 }
 
@@ -187,12 +158,10 @@ export async function processTweetWithAI(
   engagementType: EngagementType,
   business: PainPoint
 ): Promise<string> {
-  console.log("[processTweetWithAI] Starting processTweetWithAI...");
   const assistantId = assistantMapping[engagementType.toLowerCase()];
   if (!assistantId) {
     throw new Error(`Unsupported engagement type: ${engagementType}`);
   }
-  console.log("[processTweetWithAI] Assistant ID:", assistantId);
 
   // Fetch and render the dynamic system message.
   const renderedSystemMessage = await fetchAndRenderSystemMessage(
@@ -201,31 +170,20 @@ export async function processTweetWithAI(
     engagementType,
     tweetText
   );
-  console.log(
-    "[processTweetWithAI] Rendered system message:",
-    renderedSystemMessage
-  );
 
   // Create a thread and send the system and user messages.
   const threadId = await createThreadWithMessages(
     renderedSystemMessage,
     tweetText
   );
-  console.log("[processTweetWithAI] Thread ID:", threadId);
 
   // Start the run and poll until it completes.
   await startRunAndPoll(threadId, assistantId, business);
 
   // Retrieve the assistant's response.
   const responseText = await getResponseFromThread(threadId);
-  console.log("[processTweetWithAI] Raw assistant response:", responseText);
 
-  // Apply post-processing filters.
   const finalResponse = applyPostFilters(responseText, business);
-  console.log(
-    "[processTweetWithAI] Final response after filters:",
-    finalResponse
-  );
 
   return finalResponse;
 }
@@ -234,25 +192,21 @@ export async function processTweetWithAI(
  * Express controller for processing incoming tweet requests and saving generated responses.
  */
 export const TweetsController = async (req: Request, res: Response) => {
-  console.log("[TweetsController] Request received:", req.body);
   try {
     const { accountId, tweetId, tweetText, engagementType } = req.body;
     if (!accountId || !tweetId || !tweetText || !engagementType) {
-      console.error("[TweetsController] Missing required parameters.");
       res.status(400).json({ error: "Missing required parameters." });
       return;
     }
 
     const tweet = await db.tweet.findFirst({ where: { id: tweetId } });
     if (!tweet) throw new Error(`Tweet with ID ${tweetId} not found.`);
-    console.log("[TweetsController] Found tweet:", tweetId);
 
     const twitterAccount = await db.twitterAccount.findFirst({
       where: { id: accountId },
     });
     if (!twitterAccount)
       throw new Error(`Twitter account with ID ${accountId} not found.`);
-    console.log("[TweetsController] Found twitter account:", accountId);
 
     const appPainpoint = await db.painPoint.findFirst({
       where: { twitterAccountId: accountId },
@@ -260,10 +214,6 @@ export const TweetsController = async (req: Request, res: Response) => {
     if (!appPainpoint || appPainpoint.siteSummary === "N/A") {
       throw new Error("App's pain point is not properly configured.");
     }
-    console.log(
-      "[TweetsController] Found app painpoint for account:",
-      accountId
-    );
 
     // Process the tweet using the AI assistant.
     const aiResponse = await processTweetWithAI(
@@ -271,7 +221,6 @@ export const TweetsController = async (req: Request, res: Response) => {
       engagementType,
       appPainpoint
     );
-    console.log("[TweetsController] AI response:", aiResponse);
 
     type AIResponse = {
       responses:
@@ -280,10 +229,8 @@ export const TweetsController = async (req: Request, res: Response) => {
     };
 
     const parsed: AIResponse = JSON.parse(aiResponse);
-    console.log("[TweetsController] Parsed AI response:", parsed);
 
     const responsesArray = extractResponses(parsed);
-    console.log("[TweetsController] Extracted responses:", responsesArray);
 
     await db.$transaction(
       responsesArray.map(({ responseText, responseType }) =>
@@ -297,7 +244,6 @@ export const TweetsController = async (req: Request, res: Response) => {
         })
       )
     );
-    console.log("[TweetsController] Saved generated responses successfully.");
 
     res.status(200).json({
       message: "Generated responses successfully.",
