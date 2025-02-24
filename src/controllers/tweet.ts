@@ -304,7 +304,7 @@ export const TweetsController = async (req: Request, res: Response) => {
       responses: responsesArray,
     });
   } catch (error) {
-    console.error("[TweetsController error]:", error);
+    console.log("[TweetsController error]:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };

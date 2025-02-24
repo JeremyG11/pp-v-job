@@ -30,10 +30,21 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
      * This is a cron expression that runs at 12:05 AM every day.
      * This job is scheduled to run after the fetch-mentions job.
      */
-    schedule: "0 5 * * *",
+    schedule: "5 0 * * *",
     handler: async () => {
       await fetchTweetsForAccounts(user.id);
       await generateResponsesForTopTweets(user.id);
+
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 30000));
+        const state = await initializeState({ userId: user.id });
+        await graph.invoke(state);
+      } catch (error) {
+        console.error(
+          `Error running workflow for user ${user.id}:`,
+          error.message
+        );
+      }
     },
     timezone: userTimezone,
   },
@@ -46,7 +57,7 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
      * This job is scheduled to run after the refresh-access-token job.
      */
 
-    schedule: "*/30 * * * *",
+    schedule: "0 0 * * *",
     handler: async () => {
       const twitterAccounts = await db.twitterAccount.findMany({
         where: { userId: user.id, status: TweetAccountStatus.ACTIVE },
@@ -68,27 +79,6 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
     schedule: "*/30 * * * *",
     handler: async () => {
       // await fetchDMs();
-    },
-    timezone: userTimezone,
-  },
-
-  /**
-   * Analyze tweets every day at 12:25 AM.
-   * This is a cron expression that runs at 12:25 AM every day.
-   */
-  {
-    id: `analyze-tweets-${user.id}`,
-    schedule: "25 0 * * *",
-    handler: async () => {
-      try {
-        const state = await initializeState({ userId: user.id });
-        await graph.invoke(state);
-      } catch (error) {
-        console.error(
-          `Error running workflow for user ${user.id}:`,
-          error.message
-        );
-      }
     },
     timezone: userTimezone,
   },
