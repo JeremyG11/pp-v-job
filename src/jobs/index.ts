@@ -30,7 +30,7 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
      * This is a cron expression that runs at 12:05 AM every day.
      * This job is scheduled to run after the fetch-mentions job.
      */
-    schedule: "*/20 * * * *",
+    schedule: "5 0 * * *",
     handler: async () => {
       await fetchTweetsForAccounts(user.id);
       await generateResponsesForTopTweets(user.id);
