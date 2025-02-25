@@ -13,10 +13,6 @@ import { graph, initializeState } from "@/graphs";
 export const createJobs = (user: User, userTimezone: string): Job[] => [
   {
     id: `fetch-mentions-${user.id}`,
-    /**
-     * Fetch mentions every day at midnight.
-     * This is a cron expression that runs at 12:00 AM every day.
-     */
     schedule: "0 0 * * *",
     handler: async () => {
       await fetchMentions();
@@ -25,39 +21,16 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
   },
   {
     id: `fetch-tweets-${user.id}`,
-    /**
-     * Fetch tweets for accounts every day at 13:30 (1:30 PM).
-     * This is a cron expression that runs at 13:30 every day.
-     * This job is scheduled to run after the fetch-mentions job.
-     */
-    schedule: "30 13 * * *",
+    schedule: "0 5 * * *",
     handler: async () => {
       await fetchTweetsForAccounts(user.id);
       await generateResponsesForTopTweets(user.id);
-
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 30000));
-        const state = await initializeState({ userId: user.id });
-        await graph.invoke(state);
-      } catch (error) {
-        console.log(
-          `Error running workflow for user ${user.id}:`,
-          error.message
-        );
-      }
     },
     timezone: userTimezone,
   },
-
   {
     id: `fetch-usertimeline-data-${user.id}`,
-    /**
-     * Fetch Twitter data every 60 minutes.
-     * This is a cron expression that runs every 60 minutes.
-     * This job is scheduled to run after the refresh-access-token job.
-     */
-
-    schedule: "0 0 * * *",
+    schedule: "*/30 * * * *",
     handler: async () => {
       const twitterAccounts = await db.twitterAccount.findMany({
         where: { userId: user.id, status: TweetAccountStatus.ACTIVE },
@@ -71,14 +44,25 @@ export const createJobs = (user: User, userTimezone: string): Job[] => [
   },
   {
     id: `fetch-dms-${user.id}`,
-    /**
-     * Fetch DMs every day at 12:20 AM.
-     * This is a cron expression that runs at 12:20 AM every day.
-     * This job is scheduled to run after the fetch-twitter-data job.
-     */
     schedule: "*/30 * * * *",
     handler: async () => {
       // await fetchDMs();
+    },
+    timezone: userTimezone,
+  },
+  {
+    id: `analyze-tweets-${user.id}`,
+    schedule: "25 0 * * *",
+    handler: async () => {
+      try {
+        const state = await initializeState({ userId: user.id });
+        await graph.invoke(state);
+      } catch (error) {
+        console.error(
+          `Error running workflow for user ${user.id}:`,
+          error.message
+        );
+      }
     },
     timezone: userTimezone,
   },
